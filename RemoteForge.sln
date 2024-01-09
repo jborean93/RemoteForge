@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RemoteForge", ".\src\RemoteForge\RemoteForge.csproj", "{471F93AB-F12E-41E5-835E-57ACFB585E18}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RemoteForge.Shared", ".\src\RemoteForge.Shared\RemoteForge.Shared.csproj", "{EE7E4B81-3BB4-4F75-BEBB-FF6CBACB810D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{471F93AB-F12E-41E5-835E-57ACFB585E18}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{471F93AB-F12E-41E5-835E-57ACFB585E18}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{471F93AB-F12E-41E5-835E-57ACFB585E18}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{471F93AB-F12E-41E5-835E-57ACFB585E18}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EE7E4B81-3BB4-4F75-BEBB-FF6CBACB810D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EE7E4B81-3BB4-4F75-BEBB-FF6CBACB810D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EE7E4B81-3BB4-4F75-BEBB-FF6CBACB810D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EE7E4B81-3BB4-4F75-BEBB-FF6CBACB810D}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

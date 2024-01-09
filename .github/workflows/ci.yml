@@ -1,0 +1,107 @@
+name: Test RemoteForce
+on:
+  push:
+    branches:
+    - main
+
+  pull_request:
+    branches:
+    - main
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  POWERSHELL_TELEMETRY_OPTOUT: 1
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+  DOTNET_NOLOGO: true
+  BUILD_CONFIGURATION: ${{ fromJSON('["Debug", "Release"]')[github.ref == 'refs/heads/main'] }}
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # Azure OIDC auth
+      contents: read  # Repo checkout
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v3
+
+    - name: OIDC Login to Azure
+      if: ${{ env.BUILD_CONFIGURATION == 'Release' }}
+      uses: azure/login@v1
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    - name: Build module
+      shell: pwsh
+      run: ./build.ps1 -Configuration $env:BUILD_CONFIGURATION -Task Build
+      env:
+        AZURE_KEYVAULT_NAME: ${{ env.BUILD_CONFIGURATION == 'Release' && secrets.AZURE_KEYVAULT_NAME || '' }}
+        AZURE_KEYVAULT_CERT: ${{ env.BUILD_CONFIGURATION == 'Release' && secrets.AZURE_KEYVAULT_CERT || '' }}
+
+    - name: Capture PowerShell Module
+      uses: actions/upload-artifact@v3
+      with:
+        name: PSModule
+        path: output/*.nupkg
+
+  test:
+    name: test
+    needs:
+    - build
+    runs-on: ${{ matrix.info.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        info:
+        - name: PS_7.3_x64_Windows
+          psversion: '7.3.0'
+          os: windows-latest
+        - name: PS_7.4_x64_Windows
+          psversion: '7.4.0'
+          os: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Restore Built PowerShell Module
+      uses: actions/download-artifact@v3
+      with:
+        name: PSModule
+        path: output
+
+    - name: Run Tests
+      shell: pwsh
+      run: |
+        $buildParams = @{
+            Configuration = $env:BUILD_CONFIGURATION
+            Task = 'Test'
+            PowerShellVersion = '${{ matrix.info.psversion }}'
+            ModuleNupkg = 'output/*.nupkg'
+        }
+        ./build.ps1 @buildParams
+        exit $LASTEXITCODE
+
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: Unit Test Results (${{ matrix.info.name }})
+        path: ./output/TestResults/Pester.xml
+
+    - name: Upload Coverage Results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: Coverage Results (${{ matrix.info.name }})
+        path: ./output/TestResults/Coverage.xml
+
+    - name: Upload Coverage to codecov
+      if: always()
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./output/TestResults/Coverage.xml
+        flags: ${{ matrix.info.name }}
