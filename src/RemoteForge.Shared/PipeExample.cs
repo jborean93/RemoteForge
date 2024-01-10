@@ -5,10 +5,14 @@ using RemoteForge.Shared;
 
 namespace RemoteForge.Client;
 
+[RemoteForge("pipe", nameof(Create))]
 public sealed class PipeInfo : IRemoteForge
 {
     public IRemoteForgeTransport CreateTransport()
         => new PipeTransport();
+
+    public static IRemoteForge Create(Uri info)
+        => new PipeInfo();
 }
 
 public sealed class PipeTransport : IRemoteForgeTransport, IDisposable
@@ -17,6 +21,8 @@ public sealed class PipeTransport : IRemoteForgeTransport, IDisposable
 
     public void CreateConnection(CancellationToken cancellationToken)
     {
+        // Thread.Sleep(5000);
+        // System.Threading.Tasks.Task.Delay(5000, cancellationToken).GetAwaiter().GetResult();
         _proc = new()
         {
             StartInfo = new()
@@ -36,37 +42,31 @@ public sealed class PipeTransport : IRemoteForgeTransport, IDisposable
 
     public void CloseConnection(CancellationToken cancellationToken)
     {
-        Console.WriteLine("Kill");
-        //_proc?.Kill();
-        Console.WriteLine("WaitForExit");
-        //_proc?.WaitForExit();
-        Console.WriteLine("CloseConnection done");
+        _proc?.Kill();
+        _proc?.WaitForExit();
     }
 
     public void WriteMessage(string message, CancellationToken cancellationToken)
     {
         Debug.Assert(_proc != null);
-        Console.WriteLine($"Writing: {message}");
+        // Console.WriteLine($"Writing: {message}");
         _proc.StandardInput.WriteLine(message);
     }
 
-    public string WaitMessage(CancellationToken cancellationToken)
+    public string? WaitMessage(CancellationToken cancellationToken)
     {
         Debug.Assert(_proc != null);
-        Console.WriteLine("Starting recv");
         string? msg = _proc.StandardOutput.ReadLineAsync(cancellationToken)
             .ConfigureAwait(false)
             .GetAwaiter()
             .GetResult();
 
-        Console.WriteLine($"Receiving: {msg}");
-        return msg ?? "";
+        // Console.WriteLine($"Receiving: {msg}");
+        return msg;
     }
 
     public void Dispose()
     {
-        _proc?.Kill();
-        _proc?.WaitForExit();
         _proc?.Dispose();
         _proc = null;
     }
