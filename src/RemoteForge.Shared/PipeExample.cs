@@ -5,9 +5,10 @@ using RemoteForge.Shared;
 
 namespace RemoteForge.Client;
 
-[RemoteForge("pipe", nameof(Create))]
 public sealed class PipeInfo : IRemoteForge
 {
+    public static string ForgeId => "pipe";
+
     public IRemoteForgeTransport CreateTransport()
         => new PipeTransport();
 

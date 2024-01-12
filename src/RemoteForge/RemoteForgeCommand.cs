@@ -129,32 +129,20 @@ public static class RemoteForgeRegistrations
     {
         foreach (Type t in assembly.GetTypes())
         {
-            RemoteForgeAttribute? attr = t.GetCustomAttribute<RemoteForgeAttribute>(false);
-            if (attr == null)
+            if (t.GetInterface(nameof(IRemoteForge)) == null)
             {
                 continue;
             }
 
-            MethodInfo? factoryMethod = t.GetMethod(
-                attr.FactoryMethod,
-                BindingFlags.Static | BindingFlags.Public,
-                new Type[] { typeof(Uri) });
-
-            if (
-                factoryMethod == null ||
-                !(
-                    factoryMethod.ReturnType == typeof(IRemoteForge) ||
-                    factoryMethod.ReturnType.IsSubclassOf(typeof(IRemoteForge))
-                )
-            ) {
-                string msg = $"Assembly type '{t.FullName}' is set but does not have the required factory method " +
-                    $"'public static {nameof(IRemoteForge)} {attr.FactoryMethod}(Uri info)' present";
-                throw new ArgumentException(msg);
-            }
-
-            Register(attr.Id, (u) => (IRemoteForge)factoryMethod.Invoke(null, new[] { u })!);
+            MethodInfo registerMethod = typeof(RemoteForgeRegistrations).GetMethod(
+                nameof(RegisterForgeType),
+                BindingFlags.NonPublic | BindingFlags.Static)!;
+            registerMethod.MakeGenericMethod(new[] { t }).Invoke(null, null);
         }
     }
+
+    private static void RegisterForgeType<T>() where T: IRemoteForge
+        => Register(T.ForgeId, T.Create);
 
     public static void Register(string id, Func<Uri, IRemoteForge> factory)
         => Register(id, (u) => new RemoteForgeConnectionInfo(factory(u)));

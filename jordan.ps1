@@ -4,7 +4,8 @@ if (-not (Get-RemoteForge -Name pipe)) {
     Register-RemoteForge -Assembly ([RemoteForge.Client.PipeInfo].Assembly)
 }
 
-Invoke-Remote -ComputerName pipe://, ssh://vagrant-domain@server2022.domain.test -ScriptBlock {
+# Invoke-Remote -ComputerName pipe://, ssh://vagrant-domain@server2022.domain.test -ScriptBlock {
+Invoke-Remote -ComputerName pipe:// -ScriptBlock {
     $user = [Environment]::UserName
     $hostname = [System.Net.Dns]::GetHostName()
 

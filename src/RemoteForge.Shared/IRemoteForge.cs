@@ -4,18 +4,10 @@ namespace RemoteForge.Shared;
 
 public interface IRemoteForge
 {
+    protected internal static virtual string ForgeId => throw new NotImplementedException();
+    protected internal static virtual string? ForgeDescription => null;
+
     IRemoteForgeTransport CreateTransport();
-}
 
-[AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
-public class RemoteForgeAttribute : Attribute
-{
-    public string Id { get; }
-    public string FactoryMethod { get; }
-
-    public RemoteForgeAttribute(string id, string factoryMethod)
-    {
-        Id = id;
-        FactoryMethod = factoryMethod;
-    }
+    protected internal static virtual IRemoteForge Create(Uri info) => throw new NotImplementedException();
 }
