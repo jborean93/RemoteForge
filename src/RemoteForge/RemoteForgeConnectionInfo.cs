@@ -80,6 +80,9 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
         {
             if (_closed)
             {
+                // It is important this exception is an IOException. The
+                // PowerShell code treats this exception on a failure to
+                // signal the transport has been closed.
                 throw new IOException("Transport has been closed");
             }
 
@@ -183,7 +186,9 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
             currentStage = TransportMethodEnum.ReceiveShellOutputEx;
             while (!cancellationToken.IsCancellationRequested)
             {
-                // We continously run
+                // We continuously run this until the transport has been
+                // cancelled or the transport has reported it has been closed
+                // with a null/empty message.
                 string? message = _transport.WaitMessage(cancellationToken);
                 if (string.IsNullOrWhiteSpace(message))
                 {
@@ -194,6 +199,9 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
 
             if (!_isClosed)
             {
+                // If we reached here PowerShell doesn't know the transport is
+                // closed so it raises an exception.
+                writer.SetClosed();
                 string msg = "Transport has returned no data before it has been closed";
                 PSRemotingTransportException err = new(msg);
                 RaiseErrorHandler(new(err, currentStage));

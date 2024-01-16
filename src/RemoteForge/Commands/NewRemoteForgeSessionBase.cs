@@ -5,7 +5,7 @@ using System.Management.Automation.Host;
 using System.Management.Automation.Runspaces;
 using System.Threading;
 
-namespace RemoteForge;
+namespace RemoteForge.Commands;
 
 public abstract class NewRemoteForgeSessionBase : PSCmdlet, IDisposable
 {

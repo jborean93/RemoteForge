@@ -6,7 +6,7 @@ using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 using System.Threading;
 
-namespace RemoteForge;
+namespace RemoteForge.Commands;
 
 [Cmdlet(VerbsLifecycle.Invoke, "Remote")]
 public sealed class InvokeRemoteCommand : NewRemoteForgeSessionBase

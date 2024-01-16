@@ -8,7 +8,7 @@ public class OnModuleImportAndRemove : IModuleAssemblyInitializer, IModuleAssemb
 {
     public void OnImport()
     {
-        RemoteForgeRegistrations.Register(
+        RemoteForgeRegistration.Register(
             "ssh",
             CreateSshConnectionInfo,
             description: "Builtin SSH transport",
@@ -25,5 +25,5 @@ public class OnModuleImportAndRemove : IModuleAssemblyInitializer, IModuleAssemb
     }
 
     public void OnRemove(PSModuleInfo module)
-    {}
+    { }
 }

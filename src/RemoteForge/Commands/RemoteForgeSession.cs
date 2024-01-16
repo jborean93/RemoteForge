@@ -3,7 +3,7 @@ using System.Linq;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 
-namespace RemoteForge;
+namespace RemoteForge.Commands;
 
 [Cmdlet(VerbsCommon.New, "RemoteForgeSession")]
 [OutputType(typeof(PSSession))]
@@ -15,7 +15,6 @@ public sealed class NewRemoteForgeSession : NewRemoteForgeSessionBase
         ValueFromPipeline = true
     )]
     public StringOrForge[] ComputerName { get; set; } = Array.Empty<StringOrForge>();
-
 
     protected override void ProcessRecord()
     {
@@ -32,7 +31,7 @@ public sealed class StringOrForge
 
     public StringOrForge(string info)
     {
-        ConnectionInfo = RemoteForgeRegistrations.CreateForgeConnectionInfo(new Uri(info));
+        ConnectionInfo = RemoteForgeRegistration.CreateForgeConnectionInfo(new Uri(info));
     }
 
     public StringOrForge(IRemoteForge forge)
