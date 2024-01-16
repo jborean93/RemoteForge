@@ -61,21 +61,6 @@ Accept pipeline input: False
 Accept wildcard characters: False
 ```
 
-### -ScriptBlock
-{{ Fill ScriptBlock Description }}
-
-```yaml
-Type: ScriptBlock
-Parameter Sets: (All)
-Aliases:
-
-Required: True
-Position: Named
-Default value: None
-Accept pipeline input: False
-Accept wildcard characters: False
-```
-
 ### -ProgressAction
 {{ Fill ProgressAction Description }}
 
@@ -85,6 +70,21 @@ Parameter Sets: (All)
 Aliases: proga
 
 Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -ScriptBlock
+{{ Fill ScriptBlock Description }}
+
+```yaml
+Type: ScriptBlock
+Parameter Sets: (All)
+Aliases:
+
+Required: True
 Position: Named
 Default value: None
 Accept pipeline input: False

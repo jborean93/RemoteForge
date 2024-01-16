@@ -14,13 +14,14 @@ schema: 2.0.0
 
 ### Explicit (Default)
 ```
-Register-RemoteForge [-Id] <String> [-ForgeFactory] <System.Func`2[System.Uri,RemoteForge.Shared.IRemoteForge]>
- [-ProgressAction <ActionPreference>] [<CommonParameters>]
+Register-RemoteForge [-Id] <String> [-ForgeFactory] <System.Func`2[System.Uri,RemoteForge.IRemoteForge]>
+ [-Description <String>] [-PassThru] [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
 ### Assembly
 ```
-Register-RemoteForge [-Assembly] <Assembly> [-ProgressAction <ActionPreference>] [<CommonParameters>]
+Register-RemoteForge [-Assembly] <Assembly> [-PassThru] [-ProgressAction <ActionPreference>]
+ [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -52,11 +53,26 @@ Accept pipeline input: False
 Accept wildcard characters: False
 ```
 
+### -Description
+{{ Fill Description Description }}
+
+```yaml
+Type: String
+Parameter Sets: Explicit
+Aliases:
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
 ### -ForgeFactory
 {{ Fill ForgeFactory Description }}
 
 ```yaml
-Type: System.Func`2[System.Uri,RemoteForge.Shared.IRemoteForge]
+Type: System.Func`2[System.Uri,RemoteForge.IRemoteForge]
 Parameter Sets: Explicit
 Aliases:
 
@@ -77,6 +93,21 @@ Aliases:
 
 Required: True
 Position: 0
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -PassThru
+{{ Fill PassThru Description }}
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
 Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False

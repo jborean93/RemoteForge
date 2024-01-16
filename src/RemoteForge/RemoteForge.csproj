@@ -8,8 +8,4 @@
   <ItemGroup>
     <PackageReference Include="System.Management.Automation" Version="7.3.0" PrivateAssets="all" />
   </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="../RemoteForge.Shared/RemoteForge.Shared.csproj" />
-  </ItemGroup>
 </Project>

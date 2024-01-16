@@ -1,6 +1,6 @@
 using System.Threading;
 
-namespace RemoteForge.Shared;
+namespace RemoteForge;
 
 /// <summary>
 /// Interface used for custom transport implementations.

@@ -11,7 +11,7 @@
 @{
 
     # Script module or binary module file associated with this manifest.
-    RootModule = 'RemoteForge.psm1'
+    RootModule = 'bin/net7.0/RemoteForge.dll'
 
     # Version number of this module.
     ModuleVersion = '0.1.0'

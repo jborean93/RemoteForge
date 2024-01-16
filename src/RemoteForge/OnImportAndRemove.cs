@@ -8,7 +8,11 @@ public class OnModuleImportAndRemove : IModuleAssemblyInitializer, IModuleAssemb
 {
     public void OnImport()
     {
-        RemoteForgeRegistrations.Register("ssh", CreateSshConnectionInfo);
+        RemoteForgeRegistrations.Register(
+            "ssh",
+            CreateSshConnectionInfo,
+            description: "Builtin SSH transport",
+            isDefault: true);
         // winrm
         // hyperv
         // pwsh

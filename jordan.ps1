@@ -1,10 +1,23 @@
 $ErrorActionPreference = 'Stop'
 
-if (-not (Get-RemoteForge -Name pipe)) {
-    Register-RemoteForge -Assembly ([RemoteForge.Client.PipeInfo].Assembly)
-}
+$testModule = Import-Module -Name "$PSScriptRoot/tests/TestForge/bin/Release/net7.0/TestForge.dll" -PassThru
+Register-RemoteForge -Assembly $testModule.ImplementingAssembly
+Register-RemoteForge -Assembly $testModule.ImplementingAssembly
 
-# Invoke-Remote -ComputerName pipe://, ssh://vagrant-domain@server2022.domain.test -ScriptBlock {
+Get-RemoteForge
+
+return
+
+# Trace-Command -PSHost -Name CRSessionFSM -Expression {
+#     # Invoke-Remote -ComputerName pipe://, ssh://vagrant-domain@server2022.domain.test -ScriptBlock {
+#     Invoke-Remote -ComputerName pipe:// -ScriptBlock {
+#         $user = [Environment]::UserName
+#         $hostname = [System.Net.Dns]::GetHostName()
+
+#         "Running PID $pid under User '$user' on Host '$hostname'"
+#     }
+# }
+
 Invoke-Remote -ComputerName pipe:// -ScriptBlock {
     $user = [Environment]::UserName
     $hostname = [System.Net.Dns]::GetHostName()

@@ -1,32 +1,86 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
+using System.Diagnostics.CodeAnalysis;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 using System.Reflection;
-using RemoteForge.Shared;
+
+namespace RemoteForge;
+
+public delegate RunspaceConnectionInfo RemoteForgeFactory(Uri info);
+
+public sealed class RemoteForgeRegistration
+{
+    public string Id { get; }
+    public string? Description { get; }
+    public bool IsDefault { get; }
+    internal RemoteForgeFactory CreateFactory { get; }
+
+    internal RemoteForgeRegistration(
+        string id,
+        string? description,
+        bool isDefault,
+        RemoteForgeFactory createFactory)
+    {
+        Id = id;
+        Description = description;
+        IsDefault = isDefault;
+        CreateFactory = createFactory;
+    }
+}
 
 [Cmdlet(
     VerbsCommon.Get,
     "RemoteForge"
 )]
+[OutputType(typeof(RemoteForgeRegistration))]
 public sealed class GetRemoteForgeCommand : PSCmdlet
 {
+    private List<WildcardPattern> _matches = new();
+
     [Parameter(
         Position = 0
     )]
     public string[] Name { get; set; } = Array.Empty<string>();
 
+    protected override void ProcessRecord()
+    {
+        foreach (string name in Name)
+        {
+            _matches.Add(new(name));
+        }
+    }
+
     protected override void EndProcessing()
     {
-        foreach (KeyValuePair<string, Func<Uri, RunspaceConnectionInfo>> kvp in RemoteForgeRegistrations.Registrations)
+        foreach (RemoteForgeRegistration forge in RemoteForgeRegistrations.Registrations)
         {
-            if (Name.Length == 0 || Name.Contains(kvp.Key, StringComparer.OrdinalIgnoreCase))
+            WriteVerbose($"Checking for forge '{forge.Id}' matches requested Name");
+
+            if (MatchesName(forge.Id))
             {
-                WriteObject(kvp.Key);
+                WriteObject(forge);
             }
         }
+    }
+
+    private bool MatchesName(string id)
+    {
+        if (_matches.Count == 0)
+        {
+            return true;
+        }
+
+        foreach (WildcardPattern pattern in _matches)
+        {
+            if (pattern.IsMatch(id))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
 
@@ -35,6 +89,7 @@ public sealed class GetRemoteForgeCommand : PSCmdlet
     "RemoteForge",
     DefaultParameterSetName = "Explicit"
 )]
+[OutputType(typeof(RemoteForgeRegistration))]
 public sealed class RegisterRemoteForgeCommand : PSCmdlet
 {
     [Parameter(
@@ -53,11 +108,19 @@ public sealed class RegisterRemoteForgeCommand : PSCmdlet
     public Func<Uri, IRemoteForge>? ForgeFactory { get; set; }
 
     [Parameter(
+        ParameterSetName = "Explicit"
+    )]
+    public string? Description { get; set; }
+
+    [Parameter(
         Mandatory = true,
         Position = 0,
         ParameterSetName = "Assembly"
     )]
     public Assembly? Assembly { get; set; }
+
+    [Parameter]
+    public SwitchParameter PassThru { get; set; }
 
     protected override void EndProcessing()
     {
@@ -66,12 +129,27 @@ public sealed class RegisterRemoteForgeCommand : PSCmdlet
             if (ParameterSetName == "Explicit")
             {
                 Debug.Assert(ForgeFactory != null);
-                RemoteForgeRegistrations.Register(Id, ForgeFactory);
+                RemoteForgeRegistration registration = RemoteForgeRegistrations.Register(
+                    Id,
+                    ForgeFactory,
+                    description: Description);
+
+                if (PassThru)
+                {
+                    WriteObject(registration);
+                }
             }
             else
             {
                 Debug.Assert(Assembly != null);
-                RemoteForgeRegistrations.Register(Assembly);
+                RemoteForgeRegistration[] registrations = RemoteForgeRegistrations.Register(Assembly);
+                if (PassThru)
+                {
+                    foreach (RemoteForgeRegistration registration in registrations)
+                    {
+                        WriteObject(registration);
+                    }
+                }
             }
         }
         catch (ArgumentException e)
@@ -94,7 +172,9 @@ public sealed class UnregisterRemoteForgeCommand : PSCmdlet
 {
     [Parameter(
         Mandatory = true,
-        Position = 0
+        Position = 0,
+        ValueFromPipeline = true,
+        ValueFromPipelineByPropertyName = true
     )]
     [ValidateNotNullOrEmpty]
     public string[] Id { get; set; } = Array.Empty<string>();
@@ -123,10 +203,12 @@ public sealed class UnregisterRemoteForgeCommand : PSCmdlet
 
 public static class RemoteForgeRegistrations
 {
-    internal static Dictionary<string, Func<Uri, RunspaceConnectionInfo>> Registrations { get; } = new();
+    internal static List<RemoteForgeRegistration> Registrations { get; } = new();
 
-    public static void Register(Assembly assembly)
+    public static RemoteForgeRegistration[] Register(Assembly assembly)
     {
+        List<RemoteForgeRegistration> registrations = new();
+
         foreach (Type t in assembly.GetTypes())
         {
             if (t.GetInterface(nameof(IRemoteForge)) == null)
@@ -137,33 +219,60 @@ public static class RemoteForgeRegistrations
             MethodInfo registerMethod = typeof(RemoteForgeRegistrations).GetMethod(
                 nameof(RegisterForgeType),
                 BindingFlags.NonPublic | BindingFlags.Static)!;
-            registerMethod.MakeGenericMethod(new[] { t }).Invoke(null, null);
+            RemoteForgeRegistration registration =  (RemoteForgeRegistration)registerMethod
+                .MakeGenericMethod(new[] { t })
+                .Invoke(null, null)!;
+
+            registrations.Add(registration);
         }
+
+        return registrations.ToArray();
     }
 
-    private static void RegisterForgeType<T>() where T: IRemoteForge
-        => Register(T.ForgeId, T.Create);
+    private static RemoteForgeRegistration RegisterForgeType<T>() where T: IRemoteForge
+        => Register(T.ForgeId, T.Create, T.ForgeDescription);
 
-    public static void Register(string id, Func<Uri, IRemoteForge> factory)
-        => Register(id, (u) => new RemoteForgeConnectionInfo(factory(u)));
+    public static RemoteForgeRegistration Register(
+        string id,
+        Func<Uri, IRemoteForge> factory,
+        string? description = null,
+        bool isDefault = false)
+        => Register(
+            id,
+            (u) => new RemoteForgeConnectionInfo(factory(u)),
+            description: description,
+            isDefault: isDefault);
 
-    public static void Register(string id, Func<Uri, RunspaceConnectionInfo> factory)
+    public static RemoteForgeRegistration Register(
+        string id,
+        RemoteForgeFactory factory,
+        string? description = null,
+        bool isDefault = false
+    )
     {
-        string lowerId = id.ToLowerInvariant();
-        if (Registrations.ContainsKey(lowerId))
+        if (TryGetForgeRegistration(id, out RemoteForgeRegistration? forge))
         {
-            throw new ArgumentException($"A forge with the id '{id}' has already been registered");
+            if (forge.CreateFactory.Method == factory.Method)
+            {
+                return forge;
+            }
+            else
+            {
+                throw new ArgumentException($"A forge with the id '{id}' has already been registered");
+            }
         }
 
-        Registrations[lowerId] = factory;
+        RemoteForgeRegistration registration = new(id, description, isDefault, factory);
+        Registrations.Add(registration);
+
+        return registration;
     }
 
     public static void Unregister(string id)
     {
-        string lowerId = id.ToLowerInvariant();
-        if (Registrations.ContainsKey(lowerId))
+        if (TryGetForgeRegistration(id, out RemoteForgeRegistration? forge))
         {
-            Registrations.Remove(lowerId);
+            Registrations.Remove(forge);
         }
         else
         {
@@ -174,11 +283,29 @@ public static class RemoteForgeRegistrations
     internal static RunspaceConnectionInfo CreateForgeConnectionInfo(Uri info)
     {
         string scheme = info.Scheme;
-        if (Registrations.TryGetValue(scheme.ToLowerInvariant(), out var factory))
+        if (TryGetForgeRegistration(scheme, out RemoteForgeRegistration? forge))
         {
-            return factory(info);
+            return forge.CreateFactory(info);
         }
 
         throw new ArgumentException($"No valid forge registrations found with the id '{scheme}'");
+    }
+
+    private static bool TryGetForgeRegistration(
+        string id,
+        [NotNullWhen(true)] out RemoteForgeRegistration? registration)
+    {
+        string lowerId = id.ToLowerInvariant();
+        foreach (RemoteForgeRegistration forge in Registrations)
+        {
+            if (forge.Id.ToLowerInvariant() == lowerId)
+            {
+                registration = forge;
+                return true;
+            }
+        }
+
+        registration = default;
+        return false;
     }
 }

@@ -5,7 +5,7 @@ using System.Management.Automation.Host;
 using System.Management.Automation.Runspaces;
 using System.Threading;
 
-namespace RemoteForge.Shared;
+namespace RemoteForge;
 
 public abstract class NewRemoteForgeSessionBase : PSCmdlet, IDisposable
 {
@@ -36,6 +36,7 @@ public abstract class NewRemoteForgeSessionBase : PSCmdlet, IDisposable
         private void HandleRunspaceStateChanged(object? source, RunspaceStateEventArgs stateEventArgs)
         {
             RunspaceState state = stateEventArgs.RunspaceStateInfo.State;
+            Console.WriteLine($"New state {state}");
             if (state == RunspaceState.Opened || state == RunspaceState.Closed || state == RunspaceState.Broken)
             {
                 Runspace.StateChanged -= HandleRunspaceStateChanged;
@@ -86,13 +87,16 @@ public abstract class NewRemoteForgeSessionBase : PSCmdlet, IDisposable
                 if (runspace.RunspaceStateInfo.State == RunspaceState.Broken)
                 {
                     disposeRunspace = true;
+                    string connectionString = GetRunspaceConnectionString(runspace);
 
-                    // Reason message here is most likely useless but it's better than nothing.
                     ErrorRecord err = new(
                         runspace.RunspaceStateInfo.Reason,
                         "RemoteForgeFailedConnection",
                         ErrorCategory.ConnectionError,
-                        null);
+                        null)
+                    {
+                        ErrorDetails = new($"Failed to open runspace for '{connectionString}': {runspace.RunspaceStateInfo.Reason.Message}")
+                    };
 
                     WriteError(err);
                     continue;
@@ -118,6 +122,14 @@ public abstract class NewRemoteForgeSessionBase : PSCmdlet, IDisposable
                 psCmdlet: this);
         }
     }
+
+    private static string GetRunspaceConnectionString(Runspace runspace) => runspace.OriginalConnectionInfo switch
+    {
+        WSManConnectionInfo wsman => wsman.ConnectionUri.ToString(),
+        SSHConnectionInfo ssh => ssh.ComputerName,
+        RemoteForgeConnectionInfo forge => forge.ConnectionUri,
+        _ => runspace.OriginalConnectionInfo.GetType().Name,
+    };
 
     protected override void StopProcessing()
         => _cancelTokenSource?.Cancel();

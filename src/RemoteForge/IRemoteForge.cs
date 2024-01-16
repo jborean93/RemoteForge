@@ -1,11 +1,13 @@
 using System;
 
-namespace RemoteForge.Shared;
+namespace RemoteForge;
 
 public interface IRemoteForge
 {
     protected internal static virtual string ForgeId => throw new NotImplementedException();
     protected internal static virtual string? ForgeDescription => null;
+
+    string GetTransportString() => this.GetType().Name;
 
     IRemoteForgeTransport CreateTransport();
 

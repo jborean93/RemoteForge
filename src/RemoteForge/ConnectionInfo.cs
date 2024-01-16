@@ -9,7 +9,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace RemoteForge.Shared;
+namespace RemoteForge;
 
 internal sealed class RemoteForgeConnectionInfo : RunspaceConnectionInfo
 {
@@ -33,9 +33,12 @@ internal sealed class RemoteForgeConnectionInfo : RunspaceConnectionInfo
         set => throw new NotImplementedException();
     }
 
+    internal string ConnectionUri { get; }
+
     public RemoteForgeConnectionInfo(IRemoteForge transportFactory)
     {
         _transportFactory = transportFactory;
+        ConnectionUri = transportFactory.GetTransportString();
     }
 
     public override RunspaceConnectionInfo Clone()
@@ -63,6 +66,7 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
     {
         private readonly IRemoteForgeTransport _transport;
         private readonly CancellationToken _cancelToken;
+        private bool _closed = false;
 
         public override Encoding Encoding => Encoding.UTF8;
 
@@ -74,10 +78,20 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
 
         public override void WriteLine(string? value)
         {
+            if (_closed)
+            {
+                throw new IOException("Transport has been closed");
+            }
+
             if (!string.IsNullOrWhiteSpace(value))
             {
                 _transport.WriteMessage(value, _cancelToken);
             }
+        }
+
+        internal void SetClosed()
+        {
+            _closed = true;
         }
     }
 
@@ -147,6 +161,8 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
     /// <param name="cancellationToken">A cancellation token for the task.</param>
     private void RunTransport(CancellationToken cancellationToken)
     {
+        using MessageWriter writer = new(_transport, cancellationToken);
+
         TransportMethodEnum currentStage = TransportMethodEnum.CreateShellEx;
         bool isOpened = false;
 
@@ -159,7 +175,6 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
             // Sets the writer to our custom TextWriter which calls the transport
             // WriteMessage method when data needs to be sent.
             currentStage = TransportMethodEnum.SendShellInputEx;
-            using MessageWriter writer = new(_transport, cancellationToken);
             SetMessageWriter(writer);
 
             // Starts the writing process by sending data to the writer.
@@ -190,6 +205,9 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
         }
         catch (Exception e)
         {
+            // On an error we want to ensure our writer raises IOException so
+            // that it is seen that the transport is closed.
+            writer.SetClosed();
             TransportErrorOccuredEventArgs transportArgs = new(
                 new PSRemotingTransportException(e.Message, e),
                 currentStage);
