@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -8,23 +9,76 @@ using System.Threading;
 
 namespace RemoteForge.Commands;
 
-[Cmdlet(VerbsLifecycle.Invoke, "Remote")]
+[Cmdlet(
+    VerbsLifecycle.Invoke,
+    "Remote",
+    DefaultParameterSetName = "ScriptBlockArgList"
+)]
+[OutputType(typeof(object))]
 public sealed class InvokeRemoteCommand : NewRemoteForgeSessionBase
 {
     [Parameter(
         Mandatory = true,
         Position = 0
     )]
-    [Alias("Cn")]
-    public StringOrForge[] ComputerName { get; set; } = Array.Empty<StringOrForge>();
+    [Alias("Cn", "Connection")]
+    public StringForgeConnectionInfoPSSession[] ComputerName { get; set; } = Array.Empty<StringForgeConnectionInfoPSSession>();
 
     [Parameter(
-        Mandatory = true
+        Mandatory = true,
+        Position = 1,
+        ParameterSetName = "ScriptBlockArgList"
+    )]
+    [Parameter(
+        Mandatory = true,
+        Position = 1,
+        ParameterSetName = "ScriptBlockParam"
     )]
     public ScriptBlock? ScriptBlock { get; set; }
 
+    [Parameter(
+        Mandatory = true,
+        Position = 1,
+        ParameterSetName = "FilePathArgList"
+    )]
+    [Parameter(
+        Mandatory = true,
+        Position = 1,
+        ParameterSetName = "FilePathParam"
+    )]
+    [Alias("PSPath")]
+    public string FilePath { get; set; } = string.Empty;
+
+    [Parameter(
+        Position = 2,
+        ParameterSetName = "ScriptBlockArgList"
+    )]
+    [Parameter(
+        Position = 2,
+        ParameterSetName = "FilePathArgList"
+    )]
+    [Alias("Args")]
+    public PSObject?[] ArgumentList { get; set; } = Array.Empty<PSObject>();
+
+    [Parameter(
+        Position = 2,
+        ParameterSetName = "ScriptBlockParam"
+    )]
+    [Parameter(
+        Position = 2,
+        ParameterSetName = "FilePathParam"
+    )]
+    [Alias("Params")]
+    public IDictionary? ParamSplat { get; set; }
+
+    [Parameter(
+        ValueFromPipeline = true,
+        ValueFromPipelineByPropertyName = true
+    )]
+    public PSObject?[] InputObject { get; set; } = Array.Empty<PSObject>();
+
     [Parameter]
-    public PSObject[] InputObject { get; set; } = Array.Empty<PSObject>();
+    public int ThrottleLimit { get; set; } = 32;
 
     protected override void EndProcessing()
     {

@@ -36,7 +36,6 @@ public abstract class NewRemoteForgeSessionBase : PSCmdlet, IDisposable
         private void HandleRunspaceStateChanged(object? source, RunspaceStateEventArgs stateEventArgs)
         {
             RunspaceState state = stateEventArgs.RunspaceStateInfo.State;
-            Console.WriteLine($"New state {state}");
             if (state == RunspaceState.Opened || state == RunspaceState.Closed || state == RunspaceState.Broken)
             {
                 Runspace.StateChanged -= HandleRunspaceStateChanged;

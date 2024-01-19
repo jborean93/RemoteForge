@@ -1,12 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
-$testModule = Import-Module -Name "$PSScriptRoot/tests/TestForge/bin/Release/net7.0/TestForge.dll" -PassThru
-Register-RemoteForge -Assembly $testModule.ImplementingAssembly
-Register-RemoteForge -Assembly $testModule.ImplementingAssembly
-
+Import-Module -Name "$PSScriptRoot/tests/TestForge/bin/Release/net7.0/TestForge.dll"
 Get-RemoteForge
-
-return
 
 # Trace-Command -PSHost -Name CRSessionFSM -Expression {
 #     # Invoke-Remote -ComputerName pipe://, ssh://vagrant-domain@server2022.domain.test -ScriptBlock {
@@ -18,7 +13,7 @@ return
 #     }
 # }
 
-Invoke-Remote -ComputerName pipe:// -ScriptBlock {
+Invoke-Remote -ComputerName PipeTest:// -ScriptBlock {
     $user = [Environment]::UserName
     $hostname = [System.Net.Dns]::GetHostName()
 

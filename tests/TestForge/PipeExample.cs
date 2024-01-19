@@ -11,7 +11,7 @@ public sealed class PipeInfo : IRemoteForge
 {
     private readonly string _factoryUri;
 
-    public static string ForgeId => "pipe_test";
+    public static string ForgeId => "PipeTest";
     public static string ForgeDescription => "Test pipe transport";
 
     public bool FailOnClose { get; }

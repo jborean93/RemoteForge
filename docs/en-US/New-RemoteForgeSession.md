@@ -13,8 +13,8 @@ schema: 2.0.0
 ## SYNTAX
 
 ```
-New-RemoteForgeSession [-ComputerName] <StringOrForge[]> [-ProgressAction <ActionPreference>]
- [<CommonParameters>]
+New-RemoteForgeSession [-ComputerName] <StringForgeConnectionInfoPSSession[]>
+ [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -35,7 +35,7 @@ PS C:\> {{ Add example code here }}
 {{ Fill ComputerName Description }}
 
 ```yaml
-Type: StringOrForge[]
+Type: StringForgeConnectionInfoPSSession[]
 Parameter Sets: (All)
 Aliases:
 

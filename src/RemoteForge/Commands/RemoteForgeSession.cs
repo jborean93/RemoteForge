@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 
@@ -14,33 +13,51 @@ public sealed class NewRemoteForgeSession : NewRemoteForgeSessionBase
         Mandatory = true,
         ValueFromPipeline = true
     )]
-    public StringOrForge[] ComputerName { get; set; } = Array.Empty<StringOrForge>();
+    [Alias("Cn", "Connection")]
+    public StringForgeConnectionInfoPSSession[] ComputerName { get; set; } = Array.Empty<StringForgeConnectionInfoPSSession>();
 
     protected override void ProcessRecord()
     {
-        foreach (PSSession session in CreatePSSessions(ComputerName.Select(c => c.ConnectionInfo)))
+        foreach (StringForgeConnectionInfoPSSession connection in ComputerName)
         {
-            WriteObject(session);
+            if (connection.PSSession != null)
+            {
+                WriteObject(connection.PSSession);
+            }
+            else
+            {
+                foreach (PSSession s in CreatePSSessions(new [] { connection.ConnectionInfo }))
+                {
+                    WriteObject(s);
+                }
+            }
         }
     }
 }
 
-public sealed class StringOrForge
+public sealed class StringForgeConnectionInfoPSSession
 {
     internal RunspaceConnectionInfo ConnectionInfo { get; }
+    internal PSSession? PSSession { get; }
 
-    public StringOrForge(string info)
+    public StringForgeConnectionInfoPSSession(string info)
     {
         ConnectionInfo = RemoteForgeRegistration.CreateForgeConnectionInfo(new Uri(info));
     }
 
-    public StringOrForge(IRemoteForge forge)
+    public StringForgeConnectionInfoPSSession(IRemoteForge forge)
     {
         ConnectionInfo = new RemoteForgeConnectionInfo(forge);
     }
 
-    public StringOrForge(RunspaceConnectionInfo info)
+    public StringForgeConnectionInfoPSSession(RunspaceConnectionInfo info)
     {
         ConnectionInfo = info;
+    }
+
+    public StringForgeConnectionInfoPSSession(PSSession session)
+    {
+        ConnectionInfo = session.Runspace.OriginalConnectionInfo;
+        PSSession = session;
     }
 }

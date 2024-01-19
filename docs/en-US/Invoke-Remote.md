@@ -12,8 +12,31 @@ schema: 2.0.0
 
 ## SYNTAX
 
+### ScriptBlockArgList (Default)
 ```
-Invoke-Remote [-ComputerName] <StringOrForge[]> -ScriptBlock <ScriptBlock> [-InputObject <PSObject[]>]
+Invoke-Remote [-ComputerName] <StringForgeConnectionInfoPSSession[]> -ScriptBlock <ScriptBlock>
+ [-ArgumentList <PSObject[]>] [-InputObject <PSObject[]>] [-ThrottleLimit <Int32>]
+ [-ProgressAction <ActionPreference>] [<CommonParameters>]
+```
+
+### ScriptBlockParam
+```
+Invoke-Remote [-ComputerName] <StringForgeConnectionInfoPSSession[]> -ScriptBlock <ScriptBlock>
+ [-ParamSplat <IDictionary>] [-InputObject <PSObject[]>] [-ThrottleLimit <Int32>]
+ [-ProgressAction <ActionPreference>] [<CommonParameters>]
+```
+
+### FilePathArgList
+```
+Invoke-Remote [-ComputerName] <StringForgeConnectionInfoPSSession[]> -FilePath <String>
+ [-ArgumentList <PSObject[]>] [-InputObject <PSObject[]>] [-ThrottleLimit <Int32>]
+ [-ProgressAction <ActionPreference>] [<CommonParameters>]
+```
+
+### FilePathParam
+```
+Invoke-Remote [-ComputerName] <StringForgeConnectionInfoPSSession[]> -FilePath <String>
+ [-ParamSplat <IDictionary>] [-InputObject <PSObject[]>] [-ThrottleLimit <Int32>]
  [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
@@ -31,16 +54,46 @@ PS C:\> {{ Add example code here }}
 
 ## PARAMETERS
 
+### -ArgumentList
+{{ Fill ArgumentList Description }}
+
+```yaml
+Type: PSObject[]
+Parameter Sets: ScriptBlockArgList, FilePathArgList
+Aliases: Args
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
 ### -ComputerName
 {{ Fill ComputerName Description }}
 
 ```yaml
-Type: StringOrForge[]
+Type: StringForgeConnectionInfoPSSession[]
 Parameter Sets: (All)
-Aliases: Cn
+Aliases: Cn, Connection
 
 Required: True
 Position: 0
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -FilePath
+{{ Fill FilePath Description }}
+
+```yaml
+Type: String
+Parameter Sets: FilePathArgList, FilePathParam
+Aliases: PSPath
+
+Required: True
+Position: Named
 Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -53,6 +106,21 @@ Accept wildcard characters: False
 Type: PSObject[]
 Parameter Sets: (All)
 Aliases:
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: True (ByPropertyName, ByValue)
+Accept wildcard characters: False
+```
+
+### -ParamSplat
+{{ Fill ParamSplat Description }}
+
+```yaml
+Type: IDictionary
+Parameter Sets: ScriptBlockParam, FilePathParam
+Aliases: Params
 
 Required: False
 Position: Named
@@ -81,10 +149,25 @@ Accept wildcard characters: False
 
 ```yaml
 Type: ScriptBlock
-Parameter Sets: (All)
+Parameter Sets: ScriptBlockArgList, ScriptBlockParam
 Aliases:
 
 Required: True
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -ThrottleLimit
+{{ Fill ThrottleLimit Description }}
+
+```yaml
+Type: Int32
+Parameter Sets: (All)
+Aliases:
+
+Required: False
 Position: Named
 Default value: None
 Accept pipeline input: False
