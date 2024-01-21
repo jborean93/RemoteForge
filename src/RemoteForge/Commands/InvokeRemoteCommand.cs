@@ -9,6 +9,43 @@ using System.Threading;
 
 namespace RemoteForge.Commands;
 
+internal class InvokeCommandJob : IDisposable
+{
+    public readonly Runspace _runspace;
+    public readonly string _command;
+
+    public InvokeCommandJob(
+        StringForgeConnectionInfoPSSession connectionInfo,
+        string command,
+        PSObject?[]? argumentList = null,
+        IDictionary? parameters = null)
+    {
+        _command = command;
+        _runspace = RunspaceFactory.CreateRunspace();
+    }
+
+    public void Start()
+    {
+
+    }
+
+    public void WriteInput(PSObject? inputObj)
+    {
+
+    }
+
+    public void CompleteInput()
+    {
+
+    }
+
+    public void Dispose()
+    {
+        _runspace?.Dispose();
+        GC.SuppressFinalize(this);
+    }
+}
+
 [Cmdlet(
     VerbsLifecycle.Invoke,
     "Remote",
@@ -17,6 +54,8 @@ namespace RemoteForge.Commands;
 [OutputType(typeof(object))]
 public sealed class InvokeRemoteCommand : NewRemoteForgeSessionBase
 {
+    private List<PSObject?>? _inputCollection;
+
     [Parameter(
         Mandatory = true,
         Position = 0
@@ -80,38 +119,63 @@ public sealed class InvokeRemoteCommand : NewRemoteForgeSessionBase
     [Parameter]
     public int ThrottleLimit { get; set; } = 32;
 
+    // [Parameter(ValueFromRemainingArguments = true)]
+    // public PSObject?[] UnboundArguments { get; set; } = Array.Empty<PSObject?>();
+
+    protected override void BeginProcessing()
+    {
+        if (ComputerName.Length > ThrottleLimit)
+        {
+            _inputCollection = new();
+        }
+
+        base.BeginProcessing();
+    }
+
+    protected override void ProcessRecord()
+    {
+        foreach (PSObject? input in InputObject)
+        {
+            _inputCollection?.Add(input);
+            // Add to currently running group
+        }
+    }
+
     protected override void EndProcessing()
     {
-        Debug.Assert(ScriptBlock != null);
+        string abc = "foo";
 
-        PSSession[] sessions = CreatePSSessions(ComputerName.Select(c => c.ConnectionInfo)).ToArray();
-        try
-        {
-            List<(PowerShell, IAsyncResult)> tasks = new();
-            foreach (PSSession s in sessions)
-            {
-                PowerShell ps = PowerShell.Create(sessions[0].Runspace);
-                ps.AddScript(ScriptBlock.ToString());
-                IAsyncResult invokeTask = ps.BeginInvoke();
-                tasks.Add((ps, invokeTask));
-            }
+        WriteObject(abc);
+        // Debug.Assert(ScriptBlock != null);
 
-            WaitHandle.WaitAll(tasks.Select(t => t.Item2.AsyncWaitHandle).ToArray());
-            foreach ((PowerShell ps, IAsyncResult invokeTask) in tasks)
-            {
-                PSDataCollection<PSObject> result = ps.EndInvoke(invokeTask);
-                WriteObject(result, true);
-                ps.Dispose();
-            }
+        // PSSession[] sessions = CreatePSSessions(ComputerName.Select(c => c.ConnectionInfo)).ToArray();
+        // try
+        // {
+        //     List<(PowerShell, IAsyncResult)> tasks = new();
+        //     foreach (PSSession s in sessions)
+        //     {
+        //         PowerShell ps = PowerShell.Create(sessions[0].Runspace);
+        //         ps.AddScript(ScriptBlock.ToString());
+        //         IAsyncResult invokeTask = ps.BeginInvoke();
+        //         tasks.Add((ps, invokeTask));
+        //     }
 
-        }
-        finally
-        {
-            foreach (PSSession s in sessions)
-            {
-                s.Runspace.Close();
-                s.Runspace.Dispose();
-            }
-        }
+        //     WaitHandle.WaitAll(tasks.Select(t => t.Item2.AsyncWaitHandle).ToArray());
+        //     foreach ((PowerShell ps, IAsyncResult invokeTask) in tasks)
+        //     {
+        //         PSDataCollection<PSObject> result = ps.EndInvoke(invokeTask);
+        //         WriteObject(result, true);
+        //         ps.Dispose();
+        //     }
+
+        // }
+        // finally
+        // {
+        //     foreach (PSSession s in sessions)
+        //     {
+        //         s.Runspace.Close();
+        //         s.Runspace.Dispose();
+        //     }
+        // }
     }
 }
