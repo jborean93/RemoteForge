@@ -2,54 +2,15 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
+using System.Collections.Specialized;
 using System.IO;
-using System.Linq;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.PowerShell.Commands;
 
 namespace RemoteForge.Commands;
-
-// internal class InvokeCommandJob : IDisposable
-// {
-//     public readonly Runspace _runspace;
-//     public readonly string _command;
-
-//     public InvokeCommandJob(
-//         StringForgeConnectionInfoPSSession connectionInfo,
-//         string command,
-//         PSObject?[]? argumentList = null,
-//         IDictionary? parameters = null)
-//     {
-//         _command = command;
-//         _runspace = RunspaceFactory.CreateRunspace();
-//     }
-
-//     public void Start()
-//     {
-
-//     }
-
-//     public void WriteInput(PSObject? inputObj)
-//     {
-
-//     }
-
-//     public void CompleteInput()
-//     {
-
-//     }
-
-//     public void Dispose()
-//     {
-//         _runspace?.Dispose();
-//         GC.SuppressFinalize(this);
-//     }
-// }
 
 [Cmdlet(
     VerbsLifecycle.Invoke,
@@ -59,10 +20,10 @@ namespace RemoteForge.Commands;
 [OutputType(typeof(object))]
 public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
 {
-    private CancellationTokenSource _cancelToken = new();
+    private readonly CancellationTokenSource _cancelToken = new();
+    private readonly PSDataCollection<PSObject?> _inputPipe = new();
+    private readonly BlockingCollection<PSObject?> _outputPipe = new();
     private Task? _worker;
-    private PSDataCollection<PSObject?> _inputPipe = new();
-    private BlockingCollection<PSObject?> _outputPipe = new();
 
     [Parameter(
         Mandatory = true,
@@ -127,6 +88,8 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
     [Parameter]
     public int ThrottleLimit { get; set; } = 32;
 
+    // Potentially look into using this to support free-form params for either
+    // the ParamSplat or connection data
     // [Parameter(ValueFromRemainingArguments = true)]
     // public PSObject?[] UnboundArguments { get; set; } = Array.Empty<PSObject?>();
 
@@ -167,9 +130,10 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
         }
 
         // TODO: Check if `$using:...` is used in commandToRun
-        Dictionary<string, PSObject?> parameters = new();
+        OrderedDictionary? parameters = null;
         if (ParamSplat?.Count > 0)
         {
+            parameters = new();
             foreach (DictionaryEntry kvp in ParamSplat)
             {
                 PSObject? value = null;
@@ -182,13 +146,23 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
                     value = PSObject.AsPSObject(kvp.Value);
                 }
 
-                parameters.Add(kvp.Key?.ToString() ?? "", value);
+                parameters.Add(kvp.Key, value);
             }
         }
-        _worker = Task.Run(async () => await RunWorker(
-            commandToRun,
-            arguments: ArgumentList,
-            parameters: parameters));
+        _worker = Task.Run(async () =>
+        {
+            try
+            {
+                await RunWorker(
+                    commandToRun,
+                    arguments: ArgumentList,
+                    parameters: parameters);
+            }
+            finally
+            {
+                _outputPipe.CompleteAdding();
+            }
+        });
     }
 
     protected override void ProcessRecord()
@@ -200,7 +174,8 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
 
         // See if there is any output already ready to write.
         PSObject? currentOutput = null;
-        while (_outputPipe.TryTake(out currentOutput, 0, _cancelToken.Token)) {
+        while (_outputPipe.TryTake(out currentOutput, 0, _cancelToken.Token))
+        {
             WriteObject(currentOutput);
         }
     }
@@ -226,75 +201,41 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
         PSObject?[] arguments,
         IDictionary? parameters)
     {
-        try
+        Queue<StringForgeConnectionInfoPSSession> connections = new(ConnectionInfo);
+        List<Task> tasks = new(Math.Max(ThrottleLimit, ConnectionInfo.Length));
+        do
         {
-            Queue<StringForgeConnectionInfoPSSession> incomingConnections = new(ConnectionInfo);
-
-            foreach (StringForgeConnectionInfoPSSession connInfo in incomingConnections)
+            if (connections.Count == 0 || tasks.Count >= tasks.Capacity)
             {
-                Runspace rs = RunspaceFactory.CreateRunspace();
-                rs.OpenAsync();
-                // wait for open
+                Task doneTask = await Task.WhenAny(tasks);
+                tasks.Remove(doneTask);
+                await doneTask;
+            }
 
-                PowerShell ps = PowerShell.Create(rs);
-                ps.AddScript(script);
-                if (arguments != null)
-                {
-                    foreach (PSObject? obj in arguments)
-                    {
-                        ps.AddArgument(obj);
-                    }
-                }
-                if (parameters != null)
-                {
-                    ps.AddParameters(parameters);
-                }
-                await ps.InvokeAsync(_inputPipe);
+            if (connections.TryDequeue(out var info))
+            {
+                Task t = Task.Run(async () => await RunScript(info, script, arguments, parameters));
+                tasks.Add(t);
             }
         }
-        finally
-        {
-            _outputPipe.CompleteAdding();
-        }
+        while (tasks.Count > 0);
     }
 
-    public void Dispose()
-    {
-        _cancelToken?.Dispose();
-        _inputPipe?.Dispose();
-        _outputPipe?.Dispose();
-        GC.SuppressFinalize(this);
-    }
-}
-
-internal class ConnectionWorker
-{
-    private readonly StringForgeConnectionInfoPSSession _info;
-    private readonly PSDataCollection<PSObject?> _inputPipe;
-
-    public ConnectionWorker(
+    private async Task RunScript(
         StringForgeConnectionInfoPSSession info,
-        PSDataCollection<PSObject?> inputPipe,
-        BlockingCollection<PSObject?> outputPipe)
-    {
-        _info = info;
-        _inputPipe = inputPipe;
-    }
-
-    public async Task Start(
         string script,
         PSObject?[] arguments,
         IDictionary? parameters)
     {
         bool disposeRunspace = false;
-        Runspace? runspace = _info.PSSession?.Runspace;
+        Runspace? runspace = info.PSSession?.Runspace;
         if (runspace == null)
         {
             disposeRunspace = true;
             runspace = await RunspaceHelper.CreateRunspaceAsync(
-                _info.ConnectionInfo,
-                default,
-                host: null,
+                info.ConnectionInfo,
+                _cancelToken.Token,
+                host: Host,
                 typeTable: null,
                 applicationArguments: null);
         }
@@ -303,6 +244,19 @@ internal class ConnectionWorker
         {
             using PowerShell ps = PowerShell.Create(runspace);
             using PSDataCollection<PSObject?> outputPipe = new();
+            outputPipe.DataAdded += (s, e) =>
+            {
+                PSObject? obj = outputPipe[e.Index];
+                if (obj != null)
+                {
+                    obj.Properties.Add(new PSNoteProperty("PSComputerName", info.ToString()));
+                    obj.Properties.Add(new PSNoteProperty("RunspaceId", runspace.Id));
+                    obj.Properties.Add(new PSNoteProperty("PSShowComputerName", true));
+                }
+                _outputPipe.Add(obj);
+            };
+            // TODO: Figure out how to handle the other streams.
+
             ps.AddScript(script);
             if (arguments != null)
             {
@@ -324,5 +278,13 @@ internal class ConnectionWorker
                 runspace.Dispose();
             }
         }
+    }
+
+    public void Dispose()
+    {
+        _cancelToken?.Dispose();
+        _inputPipe?.Dispose();
+        _outputPipe?.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

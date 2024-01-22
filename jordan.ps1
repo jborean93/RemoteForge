@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-# Import-Module -Name "$PSScriptRoot/tests/TestForge/bin/Release/net7.0/TestForge.dll"
+Import-Module -Name "$PSScriptRoot/tests/TestForge/bin/Release/net7.0/TestForge.dll"
 # Get-RemoteForge
 
 # Trace-Command -PSHost -Name CRSessionFSM -Expression {
@@ -13,12 +13,15 @@ $ErrorActionPreference = 'Stop'
 #     }
 # }
 
-# Invoke-Remote -ComputerName PipeTest:// -ScriptBlock {
-#     $user = [Environment]::UserName
-#     $hostname = [System.Net.Dns]::GetHostName()
+$otherSplat = @{
+    foo = 'bar'
+}
+Invoke-Remote -ComputerName PipeTest://, PipeTest://, PipeTest://, PipeTest:// -ScriptBlock {
+    $user = [Environment]::UserName
+    $hostname = [System.Net.Dns]::GetHostName()
 
-#     "Running PID $pid under User '$user' on Host '$hostname'"
-# }
+    "Running PID $pid under User '$user' on Host '$hostname'"
+} -test:123 -jordan value @otherSplat
 
 # $session = New-RemoteForgeSession -ComputerName pipe://, ssh://vagrant-domain@server2022.domain.test
 # try {
@@ -32,8 +35,3 @@ $ErrorActionPreference = 'Stop'
 # finally {
 #     $session | Remove-PSSession
 # }
-
-[Console]::WriteLine("Main: $([System.Threading.Thread]::CurrentThread.ManagedThreadId)")
-Invoke-Remote -ConnectionInfo ssh://foo -ScriptBlock { 'foo' } | ForEach-Object {
-    [Console]::WriteLine("Downstream ($($_)): $([System.Threading.Thread]::CurrentThread.ManagedThreadId)")
-}
