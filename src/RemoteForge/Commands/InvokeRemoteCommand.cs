@@ -1,50 +1,55 @@
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
+using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.PowerShell.Commands;
 
 namespace RemoteForge.Commands;
 
-internal class InvokeCommandJob : IDisposable
-{
-    public readonly Runspace _runspace;
-    public readonly string _command;
+// internal class InvokeCommandJob : IDisposable
+// {
+//     public readonly Runspace _runspace;
+//     public readonly string _command;
 
-    public InvokeCommandJob(
-        StringForgeConnectionInfoPSSession connectionInfo,
-        string command,
-        PSObject?[]? argumentList = null,
-        IDictionary? parameters = null)
-    {
-        _command = command;
-        _runspace = RunspaceFactory.CreateRunspace();
-    }
+//     public InvokeCommandJob(
+//         StringForgeConnectionInfoPSSession connectionInfo,
+//         string command,
+//         PSObject?[]? argumentList = null,
+//         IDictionary? parameters = null)
+//     {
+//         _command = command;
+//         _runspace = RunspaceFactory.CreateRunspace();
+//     }
 
-    public void Start()
-    {
+//     public void Start()
+//     {
 
-    }
+//     }
 
-    public void WriteInput(PSObject? inputObj)
-    {
+//     public void WriteInput(PSObject? inputObj)
+//     {
 
-    }
+//     }
 
-    public void CompleteInput()
-    {
+//     public void CompleteInput()
+//     {
 
-    }
+//     }
 
-    public void Dispose()
-    {
-        _runspace?.Dispose();
-        GC.SuppressFinalize(this);
-    }
-}
+//     public void Dispose()
+//     {
+//         _runspace?.Dispose();
+//         GC.SuppressFinalize(this);
+//     }
+// }
 
 [Cmdlet(
     VerbsLifecycle.Invoke,
@@ -52,16 +57,19 @@ internal class InvokeCommandJob : IDisposable
     DefaultParameterSetName = "ScriptBlockArgList"
 )]
 [OutputType(typeof(object))]
-public sealed class InvokeRemoteCommand : NewRemoteForgeSessionBase
+public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
 {
-    private List<PSObject?>? _inputCollection;
+    private CancellationTokenSource _cancelToken = new();
+    private Task? _worker;
+    private PSDataCollection<PSObject?> _inputPipe = new();
+    private BlockingCollection<PSObject?> _outputPipe = new();
 
     [Parameter(
         Mandatory = true,
         Position = 0
     )]
-    [Alias("Cn", "Connection")]
-    public StringForgeConnectionInfoPSSession[] ComputerName { get; set; } = Array.Empty<StringForgeConnectionInfoPSSession>();
+    [Alias("ComputerName", "Cn")]
+    public StringForgeConnectionInfoPSSession[] ConnectionInfo { get; set; } = Array.Empty<StringForgeConnectionInfoPSSession>();
 
     [Parameter(
         Mandatory = true,
@@ -124,58 +132,197 @@ public sealed class InvokeRemoteCommand : NewRemoteForgeSessionBase
 
     protected override void BeginProcessing()
     {
-        if (ComputerName.Length > ThrottleLimit)
+        string commandToRun;
+        if (ScriptBlock != null)
         {
-            _inputCollection = new();
+            commandToRun = ScriptBlock.ToString();
+        }
+        else
+        {
+            string resolvedPath = SessionState.Path.GetUnresolvedProviderPathFromPSPath(
+                FilePath,
+                out ProviderInfo provider,
+                out PSDriveInfo _);
+
+            if (provider.ImplementingType != typeof(FileSystemProvider))
+            {
+                ErrorRecord err = new(
+                    new ArgumentException($"The resolved path '{resolvedPath}' is not a FileSystem path but {provider.Name}"),
+                    "FilePathNotFileSystem",
+                    ErrorCategory.InvalidArgument,
+                    FilePath);
+                ThrowTerminatingError(err);
+            }
+            else if (!File.Exists(resolvedPath))
+            {
+                ErrorRecord err = new(
+                    new FileNotFoundException($"Cannot find path '{resolvedPath}' because it does not exist", resolvedPath),
+                    "FilePathNotFound",
+                    ErrorCategory.ObjectNotFound,
+                    FilePath);
+                ThrowTerminatingError(err);
+            }
+
+            commandToRun = File.ReadAllText(resolvedPath);
         }
 
-        base.BeginProcessing();
+        // TODO: Check if `$using:...` is used in commandToRun
+        Dictionary<string, PSObject?> parameters = new();
+        if (ParamSplat?.Count > 0)
+        {
+            foreach (DictionaryEntry kvp in ParamSplat)
+            {
+                PSObject? value = null;
+                if (kvp.Value is PSObject psObject)
+                {
+                    value = psObject;
+                }
+                else if (kvp.Value != null)
+                {
+                    value = PSObject.AsPSObject(kvp.Value);
+                }
+
+                parameters.Add(kvp.Key?.ToString() ?? "", value);
+            }
+        }
+        _worker = Task.Run(async () => await RunWorker(
+            commandToRun,
+            arguments: ArgumentList,
+            parameters: parameters));
     }
 
     protected override void ProcessRecord()
     {
         foreach (PSObject? input in InputObject)
         {
-            _inputCollection?.Add(input);
-            // Add to currently running group
+            _inputPipe.Add(input);
+        }
+
+        // See if there is any output already ready to write.
+        PSObject? currentOutput = null;
+        while (_outputPipe.TryTake(out currentOutput, 0, _cancelToken.Token)) {
+            WriteObject(currentOutput);
         }
     }
 
     protected override void EndProcessing()
     {
-        string abc = "foo";
+        _inputPipe.Complete();
 
-        WriteObject(abc);
-        // Debug.Assert(ScriptBlock != null);
+        foreach (PSObject? output in _outputPipe.GetConsumingEnumerable(_cancelToken.Token))
+        {
+            WriteObject(output);
+        }
+        _worker?.Wait(-1, _cancelToken.Token);
+    }
 
-        // PSSession[] sessions = CreatePSSessions(ComputerName.Select(c => c.ConnectionInfo)).ToArray();
-        // try
-        // {
-        //     List<(PowerShell, IAsyncResult)> tasks = new();
-        //     foreach (PSSession s in sessions)
-        //     {
-        //         PowerShell ps = PowerShell.Create(sessions[0].Runspace);
-        //         ps.AddScript(ScriptBlock.ToString());
-        //         IAsyncResult invokeTask = ps.BeginInvoke();
-        //         tasks.Add((ps, invokeTask));
-        //     }
+    protected override void StopProcessing()
+    {
+        _cancelToken.Cancel();
+    }
 
-        //     WaitHandle.WaitAll(tasks.Select(t => t.Item2.AsyncWaitHandle).ToArray());
-        //     foreach ((PowerShell ps, IAsyncResult invokeTask) in tasks)
-        //     {
-        //         PSDataCollection<PSObject> result = ps.EndInvoke(invokeTask);
-        //         WriteObject(result, true);
-        //         ps.Dispose();
-        //     }
+    private async Task RunWorker(
+        string script,
+        PSObject?[] arguments,
+        IDictionary? parameters)
+    {
+        try
+        {
+            Queue<StringForgeConnectionInfoPSSession> incomingConnections = new(ConnectionInfo);
 
-        // }
-        // finally
-        // {
-        //     foreach (PSSession s in sessions)
-        //     {
-        //         s.Runspace.Close();
-        //         s.Runspace.Dispose();
-        //     }
-        // }
+            foreach (StringForgeConnectionInfoPSSession connInfo in incomingConnections)
+            {
+                Runspace rs = RunspaceFactory.CreateRunspace();
+                rs.OpenAsync();
+                // wait for open
+
+                PowerShell ps = PowerShell.Create(rs);
+                ps.AddScript(script);
+                if (arguments != null)
+                {
+                    foreach (PSObject? obj in arguments)
+                    {
+                        ps.AddArgument(obj);
+                    }
+                }
+                if (parameters != null)
+                {
+                    ps.AddParameters(parameters);
+                }
+                await ps.InvokeAsync(_inputPipe);
+            }
+        }
+        finally
+        {
+            _outputPipe.CompleteAdding();
+        }
+    }
+
+    public void Dispose()
+    {
+        _cancelToken?.Dispose();
+        _inputPipe?.Dispose();
+        _outputPipe?.Dispose();
+        GC.SuppressFinalize(this);
+    }
+}
+
+internal class ConnectionWorker
+{
+    private readonly StringForgeConnectionInfoPSSession _info;
+    private readonly PSDataCollection<PSObject?> _inputPipe;
+
+    public ConnectionWorker(
+        StringForgeConnectionInfoPSSession info,
+        PSDataCollection<PSObject?> inputPipe,
+        BlockingCollection<PSObject?> outputPipe)
+    {
+        _info = info;
+        _inputPipe = inputPipe;
+    }
+
+    public async Task Start(
+        string script,
+        PSObject?[] arguments,
+        IDictionary? parameters)
+    {
+        bool disposeRunspace = false;
+        Runspace? runspace = _info.PSSession?.Runspace;
+        if (runspace == null)
+        {
+            disposeRunspace = true;
+            runspace = await RunspaceHelper.CreateRunspaceAsync(
+                _info.ConnectionInfo,
+                default,
+                host: null,
+                typeTable: null,
+                applicationArguments: null);
+        }
+
+        try
+        {
+            using PowerShell ps = PowerShell.Create(runspace);
+            using PSDataCollection<PSObject?> outputPipe = new();
+            ps.AddScript(script);
+            if (arguments != null)
+            {
+                foreach (PSObject? obj in arguments)
+                {
+                    ps.AddArgument(obj);
+                }
+            }
+            if (parameters != null)
+            {
+                ps.AddParameters(parameters);
+            }
+            await ps.InvokeAsync(_inputPipe, outputPipe);
+        }
+        finally
+        {
+            if (disposeRunspace)
+            {
+                runspace.Dispose();
+            }
+        }
     }
 }

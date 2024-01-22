@@ -13,12 +13,12 @@ public sealed class NewRemoteForgeSession : NewRemoteForgeSessionBase
         Mandatory = true,
         ValueFromPipeline = true
     )]
-    [Alias("Cn", "Connection")]
-    public StringForgeConnectionInfoPSSession[] ComputerName { get; set; } = Array.Empty<StringForgeConnectionInfoPSSession>();
+    [Alias("ComputerName", "Cn")]
+    public StringForgeConnectionInfoPSSession[] ConnectionInfo { get; set; } = Array.Empty<StringForgeConnectionInfoPSSession>();
 
     protected override void ProcessRecord()
     {
-        foreach (StringForgeConnectionInfoPSSession connection in ComputerName)
+        foreach (StringForgeConnectionInfoPSSession connection in ConnectionInfo)
         {
             if (connection.PSSession != null)
             {
