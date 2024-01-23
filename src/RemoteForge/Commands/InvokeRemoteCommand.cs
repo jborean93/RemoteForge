@@ -5,9 +5,11 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.IO;
 using System.Management.Automation;
+using System.Management.Automation.Remoting;
 using System.Management.Automation.Runspaces;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Reflection;
 using Microsoft.PowerShell.Commands;
 
 namespace RemoteForge.Commands;
@@ -20,10 +22,19 @@ namespace RemoteForge.Commands;
 [OutputType(typeof(object))]
 public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
 {
+    private enum PipelineType
+    {
+        Output,
+        Error,
+        Information,
+    }
+
     private readonly CancellationTokenSource _cancelToken = new();
     private readonly PSDataCollection<PSObject?> _inputPipe = new();
-    private readonly BlockingCollection<PSObject?> _outputPipe = new();
+    private readonly BlockingCollection<(PipelineType, object?)> _outputPipe = new();
     private Task? _worker;
+
+    private PropertyInfo? _preserveInvocationInfoOnceProperty = null;
 
     [Parameter(
         Mandatory = true,
@@ -173,10 +184,9 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
         }
 
         // See if there is any output already ready to write.
-        PSObject? currentOutput = null;
-        while (_outputPipe.TryTake(out currentOutput, 0, _cancelToken.Token))
+        while (_outputPipe.TryTake(out var currentOutput, 0, _cancelToken.Token))
         {
-            WriteObject(currentOutput);
+            WriteResult(currentOutput.Item1, currentOutput.Item2);
         }
     }
 
@@ -184,9 +194,9 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
     {
         _inputPipe.Complete();
 
-        foreach (PSObject? output in _outputPipe.GetConsumingEnumerable(_cancelToken.Token))
+        foreach ((PipelineType pipelineType, object? data) in _outputPipe.GetConsumingEnumerable(_cancelToken.Token))
         {
-            WriteObject(output);
+            WriteResult(pipelineType, data);
         }
         _worker?.Wait(-1, _cancelToken.Token);
     }
@@ -194,6 +204,35 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
     protected override void StopProcessing()
     {
         _cancelToken.Cancel();
+    }
+
+    private void WriteResult(PipelineType pipelineType, object? data)
+    {
+        switch (pipelineType)
+        {
+            case PipelineType.Output:
+                WriteObject(data);
+                break;
+
+            case PipelineType.Error:
+                ErrorRecord err = (ErrorRecord)data!;
+
+                // We need to set this internal property to replicate how
+                // Invoke-Command emits an ErrorRecord works.
+                // FUTURE: Use UnsafeAccessor once .NET 8.0 is minimum
+                _preserveInvocationInfoOnceProperty ??= typeof(ErrorRecord).GetProperty(
+                    "PreserveInvocationInfoOnce",
+                    BindingFlags.NonPublic | BindingFlags.Instance)
+                    ?? throw new RuntimeException("Failed to find internal property ErrorRecord.PreserveInvocationInfoOnce");
+                _preserveInvocationInfoOnceProperty.SetValue(err, true);
+
+                WriteError(err);
+                break;
+
+            case PipelineType.Information:
+                WriteInformation((InformationRecord)data!);
+                break;
+        }
     }
 
     private async Task RunWorker(
@@ -243,6 +282,10 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
         try
         {
             using PowerShell ps = PowerShell.Create(runspace);
+
+            // Invoke-Command only forwards the output, error, and information
+            // pipes. For now we ignore Verbose, Warning, Debug, and Progress.
+            // This might be revisited in the future.
             using PSDataCollection<PSObject?> outputPipe = new();
             outputPipe.DataAdded += (s, e) =>
             {
@@ -250,12 +293,36 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
                 if (obj != null)
                 {
                     obj.Properties.Add(new PSNoteProperty("PSComputerName", info.ToString()));
-                    obj.Properties.Add(new PSNoteProperty("RunspaceId", runspace.Id));
+                    obj.Properties.Add(new PSNoteProperty("RunspaceId", runspace.InstanceId));
                     obj.Properties.Add(new PSNoteProperty("PSShowComputerName", true));
                 }
-                _outputPipe.Add(obj);
+                _outputPipe.Add((PipelineType.Output, obj));
             };
-            // TODO: Figure out how to handle the other streams.
+
+            using PSDataCollection<ErrorRecord> errorPipe = new();
+            errorPipe.DataAdded += (s, e) =>
+            {
+                ErrorRecord errorRecord = errorPipe[e.Index];
+                OriginInfo oi = new(info.ToString(), runspace.InstanceId);
+                RemotingErrorRecord remoteError = new(errorRecord, oi);
+
+                _outputPipe.Add((PipelineType.Error, remoteError));
+            };
+            ps.Streams.Error = errorPipe;
+
+            using PSDataCollection<InformationRecord> infoPipe = new();
+            infoPipe.DataAdded += (s, e) =>
+            {
+                InformationRecord infoRecord = infoPipe[e.Index];
+                // Ensures the host value isn't written twice
+                if (infoRecord.Tags.Contains("PSHOST"))
+                {
+                    infoRecord.Tags.Add("FORWARDED");
+                }
+
+                _outputPipe.Add((PipelineType.Information, infoRecord));
+            };
+            ps.Streams.Information = infoPipe;
 
             ps.AddScript(script);
             if (arguments != null)
@@ -269,7 +336,20 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
             {
                 ps.AddParameters(parameters);
             }
-            await ps.InvokeAsync(_inputPipe, outputPipe);
+
+            // Using an explicit PSInvocationSettings ensures the invocation
+            // info isn't added to the error record which provides a more
+            // consistent experience with Invoke-Command for error records.
+            PSInvocationSettings psis = new();
+            try
+            {
+                await ps.InvokeAsync(_inputPipe, outputPipe, psis, null, null);
+            }
+            catch (RemoteException e)
+            {
+                _outputPipe.Add((PipelineType.Error, e.ErrorRecord));
+                return;
+            }
         }
         finally
         {
