@@ -3,19 +3,22 @@ using namespace System.Management.Automation
 using namespace System.Management.Automation.Runspaces
 using namespace System.Security.Principal
 
-$moduleName = (Get-Item ([IO.Path]::Combine($PSScriptRoot, '..', 'module', '*.psd1'))).BaseName
-$global:ModuleManifest = [IO.Path]::Combine($PSScriptRoot, '..', 'output', $moduleName)
+$moduleName = (Get-Item ([Path]::Combine($PSScriptRoot, '..', 'module', '*.psd1'))).BaseName
+$global:ModuleManifest = [Path]::Combine($PSScriptRoot, '..', 'output', $moduleName)
 
 if (-not (Get-Module -Name $moduleName -ErrorAction SilentlyContinue)) {
     Import-Module $ModuleManifest
+}
+
+if (-not (Get-Module -Name TestForge -ErrorAction SilentlyContinue)) {
+    $testForgePath = [Path]::Combine($PSScriptRoot, 'TestForge', 'bin', 'Release', 'net7.0', 'TestForge.dll')
+    Import-Module -Name $testForgePath
 }
 
 if (-not (Get-Variable IsWindows -ErrorAction SilentlyContinue)) {
     # Running WinPS so guaranteed to be Windows.
     Set-Variable -Name IsWindows -Value $true -Scope Global
 }
-
-$global:IsAdmin = ([WindowsPrincipal][WindowsIdentity]::GetCurrent()).IsInRole([WindowsBuiltInRole]::Administrator)
 
 Function Global:Complete {
     [OutputType([System.Management.Automation.CompletionResult])]

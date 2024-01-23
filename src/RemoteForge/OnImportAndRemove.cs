@@ -19,9 +19,10 @@ public class OnModuleImportAndRemove : IModuleAssemblyInitializer, IModuleAssemb
         // container
     }
 
-    private static SSHConnectionInfo CreateSshConnectionInfo(Uri info)
+    private static SSHConnectionInfo CreateSshConnectionInfo(string info)
     {
-        return new(info.UserInfo, info.Host, null, 22);
+        Uri sshUri = new($"ssh://{info}");
+        return new(sshUri.UserInfo, sshUri.Host, string.Empty, 22);
     }
 
     public void OnRemove(PSModuleInfo module)

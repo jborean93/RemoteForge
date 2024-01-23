@@ -93,7 +93,7 @@ public sealed class StringForgeConnectionInfoPSSession
     public StringForgeConnectionInfoPSSession(string info)
     {
         _originalString = info;
-        ConnectionInfo = RemoteForgeRegistration.CreateForgeConnectionInfo(new Uri(info));
+        ConnectionInfo = RemoteForgeRegistration.CreateForgeConnectionInfo(info);
     }
 
     public StringForgeConnectionInfoPSSession(IRemoteForge forge)

@@ -81,7 +81,7 @@ public sealed class RegisterRemoteForgeCommand : PSCmdlet
         Position = 1,
         ParameterSetName = "Explicit"
     )]
-    public Func<Uri, IRemoteForge>? ForgeFactory { get; set; }
+    public Func<string, IRemoteForge>? ForgeFactory { get; set; }
 
     [Parameter(
         ParameterSetName = "Explicit"

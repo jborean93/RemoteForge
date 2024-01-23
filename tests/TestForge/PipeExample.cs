@@ -48,12 +48,13 @@ public sealed class PipeInfo : IRemoteForge
 
     public string GetTransportString() => _factoryUri;
 
-    public static IRemoteForge Create(Uri info)
+    public static IRemoteForge Create(string info)
     {
         bool failOnClose, failOnCreate, failOnRead, failOnWrite, logMessages;
         failOnClose = failOnCreate = failOnRead = failOnWrite = logMessages = false;
 
-        NameValueCollection infoQueries = HttpUtility.ParseQueryString(info.Query);
+        Uri pipeUri = new($"PipeTest://{info}");
+        NameValueCollection infoQueries = HttpUtility.ParseQueryString(pipeUri.Query);
         for (int i = 0; i < infoQueries.Count; i++)
         {
             string? key = infoQueries.GetKey(i)?.ToLowerInvariant();
@@ -83,7 +84,7 @@ public sealed class PipeInfo : IRemoteForge
         }
 
         return new PipeInfo(
-            info.OriginalString,
+            info,
             failOnClose,
             failOnCreate,
             failOnRead,

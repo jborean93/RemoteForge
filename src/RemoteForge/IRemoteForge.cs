@@ -41,7 +41,7 @@ public interface IRemoteForge
     /// Called when creating the forge information instance with the URI
     /// provided by the user.
     /// </summary>
-    /// <param name="info">The uri containing the connection info.</param>
-    /// <returns>The IRemoteForge instance for the Uri provided.</returns>
-    protected internal static virtual IRemoteForge Create(Uri info) => throw new NotImplementedException();
+    /// <param name="info">The string containing the connection info.</param>
+    /// <returns>The IRemoteForge instance for the string provided.</returns>
+    protected internal static virtual IRemoteForge Create(string info) => throw new NotImplementedException();
 }

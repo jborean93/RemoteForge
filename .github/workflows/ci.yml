@@ -60,9 +60,15 @@ jobs:
         - name: PS_7.3_x64_Windows
           psversion: '7.3.0'
           os: windows-latest
+        - name: PS_7.3_x64_Linux
+          psversion: '7.3.0'
+          os: ubuntu-latest
         - name: PS_7.4_x64_Windows
           psversion: '7.4.0'
           os: windows-latest
+        - name: PS_7.4_x64_Linux
+          psversion: '7.4.0'
+          os: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v3

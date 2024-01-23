@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
@@ -7,7 +8,7 @@ using System.Reflection;
 
 namespace RemoteForge;
 
-public delegate RunspaceConnectionInfo RemoteForgeFactory(Uri info);
+public delegate RunspaceConnectionInfo RemoteForgeFactory(string info);
 
 public sealed class RemoteForgeRegistration
 {
@@ -59,7 +60,7 @@ public sealed class RemoteForgeRegistration
 
     public static RemoteForgeRegistration Register(
         string id,
-        Func<Uri, IRemoteForge> factory,
+        Func<string, IRemoteForge> factory,
         string? description = null,
         bool isDefault = false)
         => Register(
@@ -105,9 +106,29 @@ public sealed class RemoteForgeRegistration
         }
     }
 
-    internal static RunspaceConnectionInfo CreateForgeConnectionInfo(Uri info)
+    internal static RunspaceConnectionInfo CreateForgeConnectionInfo(string info)
     {
-        string scheme = info.Scheme;
+        string? scheme = null;
+        int schemeSplit = info.IndexOf(':');
+        if (schemeSplit == -1)
+        {
+            foreach (RemoteForgeRegistration registeredForge in Registrations)
+            {
+                if (registeredForge.IsDefault)
+                {
+                    scheme = registeredForge.Id;
+                    break;
+                }
+            }
+            Debug.Assert(scheme != null);
+        }
+        else
+        {
+            string[] infoSplit = info.Split(':', 2);
+            scheme = infoSplit[0];
+            info = infoSplit[1];
+        }
+
         if (TryGetForgeRegistration(scheme, out RemoteForgeRegistration? forge))
         {
             return forge.CreateFactory(info);
