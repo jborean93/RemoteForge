@@ -150,10 +150,6 @@ class Manifest {
                 break
             }
         }
-
-        if (-not $this.TestFramework) {
-            throw "No available target framework for PowerShell '$($this.PowerShellVersion)'"
-        }
     }
 }
 
