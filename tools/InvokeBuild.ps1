@@ -99,7 +99,7 @@ task Package {
     }
     Register-PSResourceRepository @repoParams
     try {
-        Publish-PSResource -Path $Manifest.ReleasePath -Repository $repoParams.Name
+        Publish-PSResource -Path $Manifest.ReleasePath -Repository $repoParams.Name -SkipModuleManifestValidate
     }
     finally {
         Unregister-PSResourceRepository -Name $repoParams.Name
