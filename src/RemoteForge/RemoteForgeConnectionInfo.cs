@@ -7,6 +7,7 @@ using System.Management.Automation.Remoting.Client;
 using System.Management.Automation.Runspaces;
 using System.Text;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 
 namespace RemoteForge;
@@ -50,7 +51,7 @@ internal sealed class RemoteForgeConnectionInfo : RunspaceConnectionInfo
         PSRemotingCryptoHelper cryptoHelper)
     {
         return new RemoteForgeClientSessionTransportManager(
-            transport: _transportFactory.CreateTransport(),
+            transportFactory: _transportFactory,
             runspaceId: instanceId,
             cryptoHelper: cryptoHelper);
     }
@@ -58,53 +59,43 @@ internal sealed class RemoteForgeConnectionInfo : RunspaceConnectionInfo
 
 internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTransportManagerBase
 {
-    private readonly IRemoteForgeTransport _transport;
     private readonly CancellationTokenSource _cancelSource = new();
-    private bool _isClosed;
+    private readonly IRemoteForge _transportFactory;
+    private readonly TaskCompletionSource _closeTask = new();
+    private Task? _worker;
 
     private class MessageWriter : TextWriter
     {
-        private readonly IRemoteForgeTransport _transport;
-        private readonly CancellationToken _cancelToken;
-        private bool _closed = false;
+        private readonly ChannelWriter<string> _writer;
 
         public override Encoding Encoding => Encoding.UTF8;
 
-        public MessageWriter(IRemoteForgeTransport transport, CancellationToken cancellationToken)
+        public MessageWriter(ChannelWriter<string> writer)
         {
-            _transport = transport;
-            _cancelToken = cancellationToken;
+            _writer = writer;
         }
 
         public override void WriteLine(string? value)
         {
-            if (_closed)
+            // If TryWrite returned false on an unbounded channel then it has
+            // been marked as completed.
+            if (!_writer.TryWrite(value ?? string.Empty))
             {
                 // It is important this exception is an IOException. The
                 // PowerShell code treats this exception on a failure to
                 // signal the transport has been closed.
                 throw new IOException("Transport has been closed");
             }
-
-            if (!string.IsNullOrWhiteSpace(value))
-            {
-                _transport.WriteMessage(value, _cancelToken);
-            }
-        }
-
-        internal void SetClosed()
-        {
-            _closed = true;
         }
     }
 
     internal RemoteForgeClientSessionTransportManager(
-        IRemoteForgeTransport transport,
+        IRemoteForge transportFactory,
         Guid runspaceId,
         PSRemotingCryptoHelper cryptoHelper
     ) : base(runspaceId, cryptoHelper)
     {
-        _transport = transport;
+        _transportFactory = transportFactory;
     }
 
     /// <summary>
@@ -115,7 +106,7 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
     /// that call until it returns.
     /// </remarks>
     public override void CreateAsync()
-        => Task.Run(() => RunTransport(_cancelSource.Token));
+        => _worker = Task.Run(RunTransport);
 
     /// <summary>
     /// Performs any connection cleanup tasks after it is no longer needed.
@@ -128,10 +119,7 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
     /// CloseAck is received.
     /// </remarks>
     protected override void CleanupConnection()
-    {
-        _isClosed = true;
-        _transport.CloseConnection(_cancelSource.Token);
-    }
+        => _closeTask.SetResult(); // Signals the task to close the connection.
 
     /// <summary>
     /// Disposes the client transport and attempts to clean everything up.
@@ -145,67 +133,73 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
     {
         if (isDisposing)
         {
-            _cancelSource?.Cancel();
-            _cancelSource?.Dispose();
-
-            if (_transport is IDisposable disposable)
+            // If the close task hasn't been signaled then we've reached
+            // dispose with a broken runspace. We want to ensure the worker has
+            // been cancelled.
+            if (!_closeTask.Task.IsCompleted)
             {
-                disposable.Dispose();
+                _cancelSource.Cancel();
             }
+            _worker?.Wait();
+
+            // Dispose the resources after it has been closed.
+            _cancelSource.Dispose();
+            _worker?.Dispose();
         }
 
         base.Dispose(isDisposing);
     }
 
-
     /// <summary>
     /// Transport task that will start the connection and read any output.
     /// </summary>
     /// <param name="cancellationToken">A cancellation token for the task.</param>
-    private void RunTransport(CancellationToken cancellationToken)
+    private async Task RunTransport()
     {
-        using MessageWriter writer = new(_transport, cancellationToken);
+        Channel<string> messageChannel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions()
+        {
+            SingleReader = true,
+            SingleWriter = false,  // MessageWriter and us use it to mark as completed
+        });
+        ChannelWriter<string> writer = messageChannel.Writer;
+        ChannelReader<string> reader = messageChannel.Reader;
 
         TransportMethodEnum currentStage = TransportMethodEnum.CreateShellEx;
         bool isOpened = false;
 
+        IRemoteForgeTransport transport = _transportFactory.CreateTransport();
         try
         {
-            _transport.CreateConnection(cancellationToken);
+            await transport.CreateConnection(_cancelSource.Token);
             isOpened = true;
-            cancellationToken.ThrowIfCancellationRequested();
 
-            // Sets the writer to our custom TextWriter which calls the transport
-            // WriteMessage method when data needs to be sent.
+            // Start the reader and writer tasks now the connection is opened.
+            Task readTask = Task.Run(async () => await ReaderWorker(reader, transport));
+            Task writeTask = Task.Run(async () => await WriterWorker(transport));
+
+            // Sets the writer to our custom TextWriter which writes the
+            // messages to the channel which our task above reads from.
             currentStage = TransportMethodEnum.SendShellInputEx;
-            SetMessageWriter(writer);
+            SetMessageWriter(new MessageWriter(writer));
 
             // Starts the writing process by sending data to the writer.
             SendOneItem();
 
+            // Wait for either the read or write task to end, will indicate it
+            // is done or failed.
             currentStage = TransportMethodEnum.ReceiveShellOutputEx;
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                // We continuously run this until the transport has been
-                // cancelled or the transport has reported it has been closed
-                // with a null/empty message.
-                string? message = _transport.WaitMessage(cancellationToken);
-                if (string.IsNullOrWhiteSpace(message))
-                {
-                    break;
-                }
-                HandleOutputDataReceived(message);
-            }
-
-            if (!_isClosed)
+            Task doneTask = await Task.WhenAny(readTask, writeTask, _closeTask.Task);
+            if (doneTask == readTask && readTask.IsCompletedSuccessfully)
             {
                 // If we reached here PowerShell doesn't know the transport is
-                // closed so it raises an exception.
-                writer.SetClosed();
-                string msg = "Transport has returned no data before it has been closed";
-                PSRemotingTransportException err = new(msg);
-                RaiseErrorHandler(new(err, currentStage));
+                // closed so we raise the exception.
+                throw new PSRemotingTransportException(
+                    "Transport has returned no data before it has been closed");
             }
+
+            // If the read or write task threw an exception it should be raised
+            // here.
+            await doneTask;
         }
         catch (OperationCanceledException)
         {
@@ -213,21 +207,69 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
         }
         catch (Exception e)
         {
-            // On an error we want to ensure our writer raises IOException so
+            // On an error we want to ensure the writer raises IOException so
             // that it is seen that the transport is closed.
-            writer.SetClosed();
+            writer.Complete();
+
+            PSRemotingTransportException transportExc = e is PSRemotingTransportException te
+                ? te
+                : new(e.Message, e);
             TransportErrorOccuredEventArgs transportArgs = new(
-                new PSRemotingTransportException(e.Message, e),
+                transportExc,
                 currentStage);
-            RaiseErrorHandler(transportArgs);
+
+            // Sigh, RaiseErrorHandler will pump the state manager which in
+            // turn leads to Dispose() being called which waits for this task
+            // to complete. We need to run this in a Task to avoid a deadlock.
+            Task _ = Task.Run(() => RaiseErrorHandler(transportArgs));
         }
         finally
         {
-            // This is a failsafe cleanup in case of a critical error.
-            if (isOpened && !_isClosed)
+            if (isOpened)
             {
-                _transport.CloseConnection(default);
+                // We wrap this to ensure the cancel token isn't cancelled on
+                // us while we are closing the connection normally.
+                try
+                {
+                    await transport.CloseConnection(_cancelSource.Token);
+                }
+                catch (OperationCanceledException)
+                {} // Dispose() was called so this is expected.
+            }
+
+            if (transport is IDisposable disposable)
+            {
+                disposable.Dispose();
             }
         }
     }
+
+    private async Task ReaderWorker(ChannelReader<string> reader, IRemoteForgeTransport transport)
+    {
+        while (true)
+        {
+            // Throws ChannelClosedException if the writer is complete
+            string msg = await reader.ReadAsync(_cancelSource.Token);
+
+            // FIXME: Capture exceptions raised here
+            await transport.WriteMessage(msg, _cancelSource.Token);
+        }
+    }
+
+    private async Task WriterWorker(IRemoteForgeTransport transport)
+    {
+        while (true)
+        {
+            // We continuously run this until the transport has been
+            // cancelled or the transport has reported it has been closed
+            // with a null/empty message.
+            string? message = await transport.WaitMessage(_cancelSource.Token);
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                break;
+            }
+            HandleOutputDataReceived(message);
+        }
+    }
+
 }

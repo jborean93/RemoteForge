@@ -1,4 +1,5 @@
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace RemoteForge;
 
@@ -14,7 +15,7 @@ public interface IRemoteForgeTransport
     /// <remarks>
     /// This is called when the Runspace is set to open.
     /// </remarks>
-    void CreateConnection(CancellationToken cancellationToken);
+    Task CreateConnection(CancellationToken cancellationToken);
 
     /// <summary>
     /// Close the transport connection.
@@ -24,13 +25,13 @@ public interface IRemoteForgeTransport
     /// This is called when the Runspace is closed or if being Dispose()
     /// before it is closed.
     /// </remarks>
-    void CloseConnection(CancellationToken cancellationToken);
+    Task CloseConnection(CancellationToken cancellationToken);
 
     /// <summary>
     /// Sends the provided message to the transport target.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
-    void WriteMessage(string message, CancellationToken cancellationToken);
+    Task WriteMessage(string message, CancellationToken cancellationToken);
 
     /// <summary>
     /// Wait for a message response from the target.
@@ -43,5 +44,5 @@ public interface IRemoteForgeTransport
     /// This should block until there is a message ready to return. Returning
     /// null or an empty string will signify the transport is closed.
     /// </remarks>
-    string? WaitMessage(CancellationToken cancellationToken);
+    Task<string?> WaitMessage(CancellationToken cancellationToken);
 }

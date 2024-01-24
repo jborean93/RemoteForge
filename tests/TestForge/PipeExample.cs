@@ -2,6 +2,7 @@ using System;
 using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Web;
 using RemoteForge;
 
@@ -117,7 +118,7 @@ public sealed class PipeTransport : IRemoteForgeTransport, IDisposable
         _logMessages = logMessages;
     }
 
-    public void CreateConnection(CancellationToken cancellationToken)
+    public Task CreateConnection(CancellationToken cancellationToken)
     {
         if (_failOnCreate)
         {
@@ -139,12 +140,17 @@ public sealed class PipeTransport : IRemoteForgeTransport, IDisposable
             }
         };
         _proc.Start();
+
+        return Task.CompletedTask;
     }
 
-    public void CloseConnection(CancellationToken cancellationToken)
+    public async Task CloseConnection(CancellationToken cancellationToken)
     {
-        _proc?.Kill();
-        _proc?.WaitForExit();
+        if (_proc != null)
+        {
+            _proc.Kill();
+            await _proc.WaitForExitAsync(cancellationToken);
+        }
 
         if (_failOnClose)
         {
@@ -152,7 +158,7 @@ public sealed class PipeTransport : IRemoteForgeTransport, IDisposable
         }
     }
 
-    public void WriteMessage(string message, CancellationToken cancellationToken)
+    public async Task WriteMessage(string message, CancellationToken cancellationToken)
     {
         Debug.Assert(_proc != null);
         if (_logMessages)
@@ -165,10 +171,10 @@ public sealed class PipeTransport : IRemoteForgeTransport, IDisposable
             throw new Exception("Failed to write message");
         }
 
-        _proc.StandardInput.WriteLine(message);
+        await _proc.StandardInput.WriteLineAsync(message.AsMemory(), cancellationToken);
     }
 
-    public string? WaitMessage(CancellationToken cancellationToken)
+    public async Task<string?> WaitMessage(CancellationToken cancellationToken)
     {
         Debug.Assert(_proc != null);
 
@@ -177,11 +183,7 @@ public sealed class PipeTransport : IRemoteForgeTransport, IDisposable
             throw new Exception("Failed to read message");
         }
 
-        string? msg = _proc.StandardOutput.ReadLineAsync(cancellationToken)
-            .ConfigureAwait(false)
-            .GetAwaiter()
-            .GetResult();
-
+        string? msg = await _proc.StandardOutput.ReadLineAsync(cancellationToken);
         if (_logMessages)
         {
             Console.WriteLine($"Receiving: {msg}");

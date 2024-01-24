@@ -27,20 +27,20 @@ jobs:
     - name: Check out repository
       uses: actions/checkout@v3
 
-    - name: OIDC Login to Azure
-      if: ${{ env.BUILD_CONFIGURATION == 'Release' }}
-      uses: azure/login@v1
-      with:
-        client-id: ${{ secrets.AZURE_CLIENT_ID }}
-        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+    # - name: OIDC Login to Azure
+    #   if: ${{ env.BUILD_CONFIGURATION == 'Release' }}
+    #   uses: azure/login@v1
+    #   with:
+    #     client-id: ${{ secrets.AZURE_CLIENT_ID }}
+    #     tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+    #     subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
     - name: Build module
       shell: pwsh
       run: ./build.ps1 -Configuration $env:BUILD_CONFIGURATION -Task Build
-      env:
-        AZURE_KEYVAULT_NAME: ${{ env.BUILD_CONFIGURATION == 'Release' && secrets.AZURE_KEYVAULT_NAME || '' }}
-        AZURE_KEYVAULT_CERT: ${{ env.BUILD_CONFIGURATION == 'Release' && secrets.AZURE_KEYVAULT_CERT || '' }}
+      # env:
+      #   AZURE_KEYVAULT_NAME: ${{ env.BUILD_CONFIGURATION == 'Release' && secrets.AZURE_KEYVAULT_NAME || '' }}
+      #   AZURE_KEYVAULT_CERT: ${{ env.BUILD_CONFIGURATION == 'Release' && secrets.AZURE_KEYVAULT_CERT || '' }}
 
     - name: Capture PowerShell Module
       uses: actions/upload-artifact@v3

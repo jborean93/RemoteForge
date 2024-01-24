@@ -38,7 +38,31 @@ internal static class RunspaceHelper
             CancellationToken cancellationToken)
         {
             RunspaceStateWaiter waiter = new(runspace);
-            runspace.OpenAsync();
+
+            bool disposeRunspace = false;
+            try
+            {
+                // SSHConnectionInfo (maybe others as well) is reliant on there
+                // being a Runspace on the thread. As we run this in a task
+                // that isn't guaranteed so we create a new runspace here.
+                if (Runspace.DefaultRunspace == null)
+                {
+                    Runspace.DefaultRunspace = RunspaceFactory.CreateRunspace();
+                    Runspace.DefaultRunspace.Open();
+                    disposeRunspace = true;
+                }
+
+                runspace.OpenAsync();
+            }
+            finally
+            {
+                if (disposeRunspace)
+                {
+                    Runspace.DefaultRunspace.Dispose();
+                    Runspace.DefaultRunspace = null;
+                }
+            }
+
             return await waiter.Wait(cancellationToken);
         }
     }
