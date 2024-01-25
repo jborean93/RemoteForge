@@ -5,12 +5,15 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.IO;
 using System.Management.Automation;
+using System.Management.Automation.Language;
 using System.Management.Automation.Remoting;
 using System.Management.Automation.Runspaces;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Reflection;
 using Microsoft.PowerShell.Commands;
+using System.Text;
+using System.Linq;
 
 namespace RemoteForge.Commands;
 
@@ -53,7 +56,7 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
         Position = 1,
         ParameterSetName = "ScriptBlockParam"
     )]
-    public ScriptBlock? ScriptBlock { get; set; }
+    public string? ScriptBlock { get; set; }
 
     [Parameter(
         Mandatory = true,
@@ -109,7 +112,7 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
         string commandToRun;
         if (ScriptBlock != null)
         {
-            commandToRun = ScriptBlock.ToString();
+            commandToRun = ScriptBlock;
         }
         else
         {
@@ -140,7 +143,6 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
             commandToRun = File.ReadAllText(resolvedPath);
         }
 
-        // TODO: Check if `$using:...` is used in commandToRun
         OrderedDictionary? parameters = null;
         if (ParamSplat?.Count > 0)
         {
@@ -160,6 +162,14 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
                 parameters.Add(kvp.Key, value);
             }
         }
+
+        Hashtable usingParameters = GetUsingParameters(commandToRun);
+        if (usingParameters.Count > 0)
+        {
+            parameters ??= new();
+            parameters["--%"] = usingParameters;
+        }
+
         _worker = Task.Run(async () =>
         {
             try
@@ -174,6 +184,59 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
                 _outputPipe.CompleteAdding();
             }
         });
+    }
+
+    private Hashtable GetUsingParameters(string script)
+    {
+        ScriptBlock? indexAccesor = null;
+
+        Hashtable usingParams = new();
+
+        // ParseInput will not fail on errors, to allow providing anything as
+        // the script to run we don't care about that, FindAll will only work
+        // if the script is valid PowerShell.
+        ScriptBlockAst sbkAst = Parser.ParseInput(script, out var _1, out var _2);
+
+        foreach (var usingStatement in sbkAst.FindAll((a) => a is UsingExpressionAst, true))
+        {
+            UsingExpressionAst usingAst = (UsingExpressionAst)usingStatement;
+            VariableExpressionAst backingVariableAst = UsingExpressionAst.ExtractUsingVariable(usingAst);
+            string varPath = backingVariableAst.VariablePath.UserPath;
+
+            // The non-index $using variable ensures the key is lowercased.
+            // The index variant is not in case the index itself is a string
+            // as that could be case sensitive.
+            string varText = usingAst.ToString();
+            if (usingAst.SubExpression is VariableExpressionAst)
+            {
+                varText = varText.ToLowerInvariant();
+            }
+            string key = Convert.ToBase64String(Encoding.Unicode.GetBytes(varText));
+
+            if (!usingParams.ContainsKey(key))
+            {
+                object? value = SessionState.PSVariable.GetValue(varPath);
+
+                if (usingAst.SubExpression is IndexExpressionAst usingIndex)
+                {
+                    // ConstantExpressionAst, StringConstantExpressionAst, and
+                    // VariableExpressionAst with IsConstantVariable() all
+                    // should return a value here. Those 3 scenarios are the
+                    // only index scenarios that $using supports.
+                    object index = usingIndex.Index.SafeGetValue();
+
+                    // PowerShell doesn't have a nice API to dynamically
+                    // invoke the Item[] lookup so to avoid complex reflection
+                    // code we just fallback to doing it in pwsh itself.
+                    indexAccesor ??= System.Management.Automation.ScriptBlock.Create("$args[0][$args[1]]");
+                    value = indexAccesor.Invoke(value, index).FirstOrDefault();
+                }
+
+                usingParams.Add(key, value);
+            }
+        }
+
+        return usingParams;
     }
 
     protected override void ProcessRecord()
