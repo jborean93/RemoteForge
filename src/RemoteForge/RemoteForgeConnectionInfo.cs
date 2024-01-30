@@ -196,7 +196,7 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
             // is done or failed.
             currentStage = TransportMethodEnum.ReceiveShellOutputEx;
             Task doneTask = await Task.WhenAny(readTask, writeTask, _closeTask.Task);
-            if (doneTask == readTask && readTask.IsCompletedSuccessfully)
+            if (doneTask == writeTask && writeTask.IsCompletedSuccessfully)
             {
                 // If we reached here PowerShell doesn't know the transport is
                 // closed so we raise the exception.
@@ -241,7 +241,7 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
                     await transport.CloseConnection(_cancelSource.Token);
                 }
                 catch (OperationCanceledException)
-                {} // Dispose() was called so this is expected.
+                { } // Dispose() was called so this is expected.
             }
 
             if (transport is IDisposable disposable)

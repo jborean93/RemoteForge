@@ -18,6 +18,7 @@ public sealed class PipeInfo : IRemoteForge
     public bool FailOnClose { get; }
     public bool FailOnCreate { get; }
     public bool FailOnRead { get; }
+    public bool EndOnRead { get; }
     public bool FailOnWrite { get; }
     public bool LogMessages { get; }
 
@@ -26,6 +27,7 @@ public sealed class PipeInfo : IRemoteForge
         bool failOnClose,
         bool failOnCreate,
         bool failOnRead,
+        bool endOnRead,
         bool failOnWrite,
         bool logMessages
     )
@@ -33,6 +35,7 @@ public sealed class PipeInfo : IRemoteForge
         FailOnClose = failOnClose;
         FailOnCreate = failOnCreate;
         FailOnRead = failOnRead;
+        EndOnRead = endOnRead;
         FailOnWrite = failOnWrite;
         LogMessages = logMessages;
         _factoryUri = factoryUri;
@@ -43,6 +46,7 @@ public sealed class PipeInfo : IRemoteForge
             FailOnClose,
             FailOnCreate,
             FailOnRead,
+            EndOnRead,
             FailOnWrite,
             LogMessages);
 
@@ -50,8 +54,8 @@ public sealed class PipeInfo : IRemoteForge
 
     public static IRemoteForge Create(string info)
     {
-        bool failOnClose, failOnCreate, failOnRead, failOnWrite, logMessages;
-        failOnClose = failOnCreate = failOnRead = failOnWrite = logMessages = false;
+        bool failOnClose, failOnCreate, failOnRead, endOnRead, failOnWrite, logMessages;
+        failOnClose = failOnCreate = failOnRead = endOnRead = failOnWrite = logMessages = false;
 
         Uri pipeUri = new($"PipeTest://{info}");
         NameValueCollection infoQueries = HttpUtility.ParseQueryString(pipeUri.Query);
@@ -77,6 +81,10 @@ public sealed class PipeInfo : IRemoteForge
             {
                 failOnRead = result;
             }
+            else if (key == "endonread" && bool.TryParse(value, out result))
+            {
+                endOnRead = result;
+            }
             else if (key == "failonwrite" && bool.TryParse(value, out result))
             {
                 failOnWrite = result;
@@ -88,6 +96,7 @@ public sealed class PipeInfo : IRemoteForge
             failOnClose,
             failOnCreate,
             failOnRead,
+            endOnRead,
             failOnWrite,
             logMessages);
     }
@@ -99,6 +108,7 @@ public sealed class PipeTransport : IRemoteForgeTransport, IDisposable
     private readonly bool _failOnClose;
     private readonly bool _failOnCreate;
     private readonly bool _failOnRead;
+    private readonly bool _endOnRead;
     private readonly bool _failOnWrite;
     private readonly bool _logMessages;
 
@@ -107,12 +117,14 @@ public sealed class PipeTransport : IRemoteForgeTransport, IDisposable
         bool failOnClose,
         bool failOnCreate,
         bool failOnRead,
+        bool endOfRead,
         bool failOnWrite,
         bool logMessages)
     {
         _failOnClose = failOnClose;
         _failOnCreate = failOnCreate;
         _failOnRead = failOnRead;
+        _endOnRead = endOfRead;
         _failOnWrite = failOnWrite;
         _logMessages = logMessages;
     }
@@ -180,6 +192,10 @@ public sealed class PipeTransport : IRemoteForgeTransport, IDisposable
         if (_failOnRead)
         {
             throw new Exception("Failed to read message");
+        }
+        else if (_endOnRead)
+        {
+            return null;
         }
 
         string? msg = await _proc.StandardOutput.ReadLineAsync(cancellationToken);

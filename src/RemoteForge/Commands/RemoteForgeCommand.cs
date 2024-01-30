@@ -30,7 +30,7 @@ public sealed class GetRemoteForgeCommand : PSCmdlet
 
     protected override void EndProcessing()
     {
-        foreach (RemoteForgeRegistration forge in RemoteForgeRegistration.Registrations)
+        foreach (RemoteForgeRegistration forge in RemoteForgeRegistration.Registrations.ToArray())
         {
             WriteVerbose($"Checking for forge '{forge.Id}' matches requested Name");
 
@@ -74,7 +74,8 @@ public sealed class RegisterRemoteForgeCommand : PSCmdlet
         ParameterSetName = "Explicit"
     )]
     [ValidateNotNullOrEmpty]
-    public string Id { get; set; } = "";
+    [Alias("Id")]
+    public string Name { get; set; } = "";
 
     [Parameter(
         Mandatory = true,
@@ -106,7 +107,7 @@ public sealed class RegisterRemoteForgeCommand : PSCmdlet
             {
                 Debug.Assert(ForgeFactory != null);
                 RemoteForgeRegistration registration = RemoteForgeRegistration.Register(
-                    Id,
+                    Name,
                     ForgeFactory,
                     description: Description);
 
@@ -153,11 +154,12 @@ public sealed class UnregisterRemoteForgeCommand : PSCmdlet
         ValueFromPipelineByPropertyName = true
     )]
     [ValidateNotNullOrEmpty]
-    public string[] Id { get; set; } = Array.Empty<string>();
+    [Alias("Id")]
+    public string[] Name { get; set; } = Array.Empty<string>();
 
     protected override void ProcessRecord()
     {
-        foreach (string forgeId in Id)
+        foreach (string forgeId in Name)
         {
             try
             {
@@ -173,6 +175,5 @@ public sealed class UnregisterRemoteForgeCommand : PSCmdlet
                 WriteError(err);
             }
         }
-        base.ProcessRecord();
     }
 }

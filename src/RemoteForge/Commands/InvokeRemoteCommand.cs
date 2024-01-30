@@ -30,7 +30,7 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
         private static DefaultVariableValue? _instance;
 
         private DefaultVariableValue()
-        {}
+        { }
 
         public static DefaultVariableValue Value => _instance ??= new();
     }
@@ -47,6 +47,8 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
     private readonly BlockingCollection<(PipelineType, object?)> _outputPipe = new();
     private Task? _worker;
     private MethodInfo? _errorRecordSetTargetObject;
+
+    private event EventHandler? OnStopEvent;
 
     [Parameter(
         Mandatory = true,
@@ -274,6 +276,7 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
     protected override void StopProcessing()
     {
         _cancelToken.Cancel();
+        OnStopEvent?.Invoke(null, new());
     }
 
     private void WriteResult(PipelineType pipelineType, object? data)
@@ -429,7 +432,19 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
             // The InvocationInfo is also useless from the remote error record
             // so returning it won't make any difference.
             PSInvocationSettings psis = new();
-            await ps.InvokeAsync(_inputPipe, outputPipe, psis, null, null);
+
+            // We cannot use Stop in case the pipeline is running something
+            // that won't respond to the stop signal. This is a best effort.
+            EventHandler stopDelegate = (s, e) => ps.BeginStop(null, null);
+            OnStopEvent += stopDelegate;
+            try
+            {
+                await ps.InvokeAsync(_inputPipe, outputPipe, psis, null, null);
+            }
+            finally
+            {
+                OnStopEvent -= stopDelegate;
+            }
         }
         finally
         {

@@ -270,6 +270,72 @@ Describe "Invoke-Remote tests" {
         $actual[1].Tags.Count | Should -Be 0
     }
 
+    It "Accepts pipeline input" {
+        $actual = 1..5 |
+            ForEach-Object { $_; Start-Sleep -Milliseconds 500 } |
+            Invoke-Remote PipeTest: {
+                param (
+                    [Parameter(ValueFromPipeline)]
+                    [int[]]
+                    $InputObject
+                )
+
+                process {
+                    foreach ($obj in $InputObject) {
+                        "Test: $obj"
+                    }
+                }
+            }
+
+        $actual.Count | Should -Be 5
+        $actual[0] | Should -Be 'Test: 1'
+        $actual[1] | Should -Be 'Test: 2'
+        $actual[2] | Should -Be 'Test: 3'
+        $actual[3] | Should -Be 'Test: 4'
+        $actual[4] | Should -Be 'Test: 5'
+    }
+
+    It "Stops running pipeline with transport end" {
+        $testFile = (New-Item -Path TestDrive:/test.txt -Value foo -Force).FullName
+        $ps = [PowerShell]::Create()
+        $null = $ps.AddScript({
+                param($RemoteForge, $TestForge, $TestFile)
+
+                $ErrorActionPreference = 'Stop'
+
+                Import-Module -Name $RemoteForge
+                Import-Module -Name $TestForge
+
+                Invoke-Remote PipeTest: {
+                    $pid
+                    Start-Sleep -Seconds 20
+                }
+            }).AddParameters(@{
+                RemoteForge = (Get-Module -Name RemoteForge).Path
+                TestForge = (Get-Module -Name TestForge).Path
+                TestFile = $testFile
+            })
+
+        $out = [System.Management.Automation.PSDataCollection[PSObject]]::new()
+        $null = $ps.BeginInvoke([System.Management.Automation.PSDataCollection[PSObject]]::new(), $out)
+
+        $attempt = 0
+        while ($out.Count -eq 0) {
+            $attempt += 1
+            if ($attempt -eq 25) {
+                throw "Timed out will waiting for test output"
+            }
+            Start-Sleep -Milliseconds 200
+        }
+
+        $remotePid = $out[0]
+        $ps.Stop()
+        Wait-Process -Id $remotePid -Timeout 5 -ErrorAction SilentlyContinue
+        if (Get-Process -Id $remotePid -ErrorAction SilentlyContinue) {
+            throw "Expected remote process to end on stop signal"
+        }
+    }
+
     It "Handles error with invalid script" {
         $actual = Invoke-Remote -ConnectionInfo PipeTest: -ScriptBlock '$a $b' -ErrorAction SilentlyContinue -ErrorVariable err
         $actual | Should -BeNullOrEmpty
@@ -298,7 +364,7 @@ Describe "Invoke-Remote tests" {
     }
 
     It "Handles error when create failed" {
-        $actual = Invoke-Remote -ConnectionInfo PipeTest:?failoncreate=true -ScriptBlock {'test'} -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual = Invoke-Remote -ConnectionInfo PipeTest:?failoncreate=true -ScriptBlock { 'test' } -ErrorAction SilentlyContinue -ErrorVariable err
         $actual | Should -BeNullOrEmpty
 
         $err.Count | Should -Be 1
@@ -307,7 +373,7 @@ Describe "Invoke-Remote tests" {
     }
 
     It "Handles error when close failed" {
-        $actual = Invoke-Remote -ConnectionInfo PipeTest:?failonclose=true -ScriptBlock {'test'} -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual = Invoke-Remote -ConnectionInfo PipeTest:?failonclose=true -ScriptBlock { 'test' } -ErrorAction SilentlyContinue -ErrorVariable err
         $actual | Should -Be test
 
         $err.Count | Should -Be 1
@@ -316,7 +382,7 @@ Describe "Invoke-Remote tests" {
     }
 
     It "Handles error when read failed" {
-        $actual = Invoke-Remote -ConnectionInfo PipeTest:?failonread=true -ScriptBlock {'test'} -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual = Invoke-Remote -ConnectionInfo PipeTest:?failonread=true -ScriptBlock { 'test' } -ErrorAction SilentlyContinue -ErrorVariable err
         $actual | Should -BeNullOrEmpty
 
         $err.Count | Should -Be 1
@@ -324,8 +390,17 @@ Describe "Invoke-Remote tests" {
         [string]$err[0] | Should -Be "Failed to run script on 'PipeTest:?failonread=true': Failed to read message"
     }
 
+    It "Handles error when read end" {
+        $actual = Invoke-Remote -ConnectionInfo PipeTest:?endonread=true -ScriptBlock { 'test' } -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual | Should -BeNullOrEmpty
+
+        $err.Count | Should -Be 1
+        $err[0].TargetObject | Should -Be 'PipeTest:?endonread=true'
+        [string]$err[0] | Should -Be "Failed to run script on 'PipeTest:?endonread=true': Transport has returned no data before it has been closed"
+    }
+
     It "Handles error when write failed" {
-        $actual = Invoke-Remote -ConnectionInfo PipeTest:?failonwrite=true -ScriptBlock {'test'} -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual = Invoke-Remote -ConnectionInfo PipeTest:?failonwrite=true -ScriptBlock { 'test' } -ErrorAction SilentlyContinue -ErrorVariable err
         $actual | Should -BeNullOrEmpty
 
         $err.Count | Should -Be 1
@@ -375,7 +450,7 @@ Describe 'Invoke-Remote $using: tests' {
 
     It "Passes ScriptBlock" {
         # Pwsh serializes scriptblocks as strings
-        $var = {'scriptblock'}
+        $var = { 'scriptblock' }
         $actual = Invoke-Remote -ConnectionInfo PipeTest: -ScriptBlock {
             $res = $using:var
             $res.GetType().FullName
@@ -384,7 +459,7 @@ Describe 'Invoke-Remote $using: tests' {
 
         $actual.Count | Should -Be 2
         $actual[0] | Should -Be System.String
-        $actual[1] | Should -Be "'scriptblock'"
+        $actual[1] | Should -Be " 'scriptblock' "
     }
 
     It "Passes with index lookup as integer" {
@@ -440,13 +515,13 @@ Describe 'Invoke-Remote $using: tests' {
 
     It "Fails if variable not defined locally" {
         {
-            Invoke-Remote -ConnectionInfo PipeTest: -ScriptBlock {$using:UndefinedVar}
+            Invoke-Remote -ConnectionInfo PipeTest: -ScriptBlock { $using:UndefinedVar }
         } | Should -Throw 'The value of the using variable ''$using:UndefinedVar'' cannot be retrieved because it has not been set in the local session.'
     }
 
     It "Fails if variable with index lookup not defined locally" {
         {
-            Invoke-Remote -ConnectionInfo PipeTest: -ScriptBlock {$using:UndefinedVar["index"]}
+            Invoke-Remote -ConnectionInfo PipeTest: -ScriptBlock { $using:UndefinedVar["index"] }
         } | Should -Throw 'The value of the using variable ''$using:UndefinedVar`["index"`]'' cannot be retrieved because it has not been set in the local session.'
     }
 

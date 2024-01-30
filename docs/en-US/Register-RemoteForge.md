@@ -14,7 +14,7 @@ schema: 2.0.0
 
 ### Explicit (Default)
 ```
-Register-RemoteForge [-Id] <String> [-ForgeFactory] <System.Func`2[System.String,RemoteForge.IRemoteForge]>
+Register-RemoteForge -Name <String> [-ForgeFactory] <System.Func`2[System.String,RemoteForge.IRemoteForge]>
  [-Description <String>] [-PassThru] [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
@@ -83,16 +83,16 @@ Accept pipeline input: False
 Accept wildcard characters: False
 ```
 
-### -Id
-{{ Fill Id Description }}
+### -Name
+{{ Fill Name Description }}
 
 ```yaml
 Type: String
 Parameter Sets: Explicit
-Aliases:
+Aliases: Id
 
 Required: True
-Position: 0
+Position: Named
 Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False

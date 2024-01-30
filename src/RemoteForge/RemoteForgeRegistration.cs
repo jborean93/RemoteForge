@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 using System.Reflection;
 
@@ -12,7 +11,12 @@ public delegate RunspaceConnectionInfo RemoteForgeFactory(string info);
 
 public sealed class RemoteForgeRegistration
 {
-    internal static List<RemoteForgeRegistration> Registrations { get; } = new();
+    // We use a thread local storage value so the registrations are scoped to
+    // a Runspace rather than be process wide.
+    [ThreadStatic]
+    private static List<RemoteForgeRegistration>? _registrations;
+
+    internal static List<RemoteForgeRegistration> Registrations => _registrations ??= new();
 
     public string Id { get; }
     public string? Description { get; }
