@@ -1,30 +1,40 @@
+using Microsoft.PowerShell.Commands;
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.IO;
+using System.Linq;
 using System.Management.Automation;
 using System.Management.Automation.Language;
 using System.Management.Automation.Remoting;
 using System.Management.Automation.Runspaces;
+using System.Reflection;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Reflection;
-using Microsoft.PowerShell.Commands;
-using System.Text;
-using System.Linq;
 
 namespace RemoteForge.Commands;
 
 [Cmdlet(
     VerbsLifecycle.Invoke,
     "Remote",
-    DefaultParameterSetName = "ScriptBlockArgList"
+    DefaultParameterSetName = "ScriptBlock"
 )]
 [OutputType(typeof(object))]
 public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
 {
+    private class DefaultVariableValue
+    {
+        private static DefaultVariableValue? _instance;
+
+        private DefaultVariableValue()
+        {}
+
+        public static DefaultVariableValue Value => _instance ??= new();
+    }
+
     private enum PipelineType
     {
         Output,
@@ -36,8 +46,7 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
     private readonly PSDataCollection<PSObject?> _inputPipe = new();
     private readonly BlockingCollection<(PipelineType, object?)> _outputPipe = new();
     private Task? _worker;
-
-    private PropertyInfo? _preserveInvocationInfoOnceProperty = null;
+    private MethodInfo? _errorRecordSetTargetObject;
 
     [Parameter(
         Mandatory = true,
@@ -49,49 +58,22 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
     [Parameter(
         Mandatory = true,
         Position = 1,
-        ParameterSetName = "ScriptBlockArgList"
-    )]
-    [Parameter(
-        Mandatory = true,
-        Position = 1,
-        ParameterSetName = "ScriptBlockParam"
+        ParameterSetName = "ScriptBlock"
     )]
     public string? ScriptBlock { get; set; }
 
     [Parameter(
         Mandatory = true,
         Position = 1,
-        ParameterSetName = "FilePathArgList"
-    )]
-    [Parameter(
-        Mandatory = true,
-        Position = 1,
-        ParameterSetName = "FilePathParam"
+        ParameterSetName = "FilePath"
     )]
     [Alias("PSPath")]
     public string FilePath { get; set; } = string.Empty;
 
-    [Parameter(
-        Position = 2,
-        ParameterSetName = "ScriptBlockArgList"
-    )]
-    [Parameter(
-        Position = 2,
-        ParameterSetName = "FilePathArgList"
-    )]
-    [Alias("Args")]
-    public PSObject?[] ArgumentList { get; set; } = Array.Empty<PSObject>();
-
-    [Parameter(
-        Position = 2,
-        ParameterSetName = "ScriptBlockParam"
-    )]
-    [Parameter(
-        Position = 2,
-        ParameterSetName = "FilePathParam"
-    )]
-    [Alias("Params")]
-    public IDictionary? ParamSplat { get; set; }
+    [Parameter(Position = 2)]
+    [ArgumentsOrParametersTransformation]
+    [Alias("Args", "Param", "Parameters")]
+    public ArgumentsOrParameters? ArgumentList { get; set; }
 
     [Parameter(
         ValueFromPipeline = true,
@@ -101,11 +83,6 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
 
     [Parameter]
     public int ThrottleLimit { get; set; } = 32;
-
-    // Potentially look into using this to support free-form params for either
-    // the ParamSplat or connection data
-    // [Parameter(ValueFromRemainingArguments = true)]
-    // public PSObject?[] UnboundArguments { get; set; } = Array.Empty<PSObject?>();
 
     protected override void BeginProcessing()
     {
@@ -143,23 +120,32 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
             commandToRun = File.ReadAllText(resolvedPath);
         }
 
+        PSObject?[] arguments = Array.Empty<PSObject?>();
         OrderedDictionary? parameters = null;
-        if (ParamSplat?.Count > 0)
-        {
-            parameters = new();
-            foreach (DictionaryEntry kvp in ParamSplat)
-            {
-                PSObject? value = null;
-                if (kvp.Value is PSObject psObject)
-                {
-                    value = psObject;
-                }
-                else if (kvp.Value != null)
-                {
-                    value = PSObject.AsPSObject(kvp.Value);
-                }
 
-                parameters.Add(kvp.Key, value);
+        if (ArgumentList != null)
+        {
+            if (ArgumentList.Arguments != null)
+            {
+                arguments = ArgumentList.Arguments;
+            }
+            else if (ArgumentList.Parameters != null)
+            {
+                parameters = new();
+                foreach (DictionaryEntry kvp in ArgumentList.Parameters)
+                {
+                    PSObject? value = null;
+                    if (kvp.Value is PSObject psObject)
+                    {
+                        value = psObject;
+                    }
+                    else if (kvp.Value != null)
+                    {
+                        value = PSObject.AsPSObject(kvp.Value);
+                    }
+
+                    parameters.Add(kvp.Key, value);
+                }
             }
         }
 
@@ -176,7 +162,7 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
             {
                 await RunWorker(
                     commandToRun,
-                    arguments: ArgumentList,
+                    arguments: arguments,
                     parameters: parameters);
             }
             finally
@@ -215,7 +201,17 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
 
             if (!usingParams.ContainsKey(key))
             {
-                object? value = SessionState.PSVariable.GetValue(varPath);
+                object? value = SessionState.PSVariable.GetValue(varPath, DefaultVariableValue.Value);
+                if (value is DefaultVariableValue)
+                {
+                    string msg = $"The value of the using variable '{usingStatement}' cannot be retrieved because it has not been set in the local session.";
+                    ErrorRecord err = new(
+                        new ArgumentException(msg),
+                        "UsingVariableIsUndefined",
+                        ErrorCategory.InvalidArgument,
+                        varPath);
+                    ThrowTerminatingError(err);
+                }
 
                 if (usingAst.SubExpression is IndexExpressionAst usingIndex)
                 {
@@ -223,7 +219,18 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
                     // VariableExpressionAst with IsConstantVariable() all
                     // should return a value here. Those 3 scenarios are the
                     // only index scenarios that $using supports.
-                    object index = usingIndex.Index.SafeGetValue();
+                    // SafeGetValue() fails in other scenarios which we warn
+                    // about.
+                    object index;
+                    try
+                    {
+                        index = usingIndex.Index.SafeGetValue();
+                    }
+                    catch (InvalidOperationException e)
+                    {
+                        WriteWarning($"Failed to extract $using value: {e.Message}");
+                        continue;
+                    }
 
                     // PowerShell doesn't have a nice API to dynamically
                     // invoke the Item[] lookup so to avoid complex reflection
@@ -247,7 +254,7 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
         }
 
         // See if there is any output already ready to write.
-        while (_outputPipe.TryTake(out var currentOutput, 0, _cancelToken.Token))
+        while (_outputPipe.TryTake(out (PipelineType, object?) currentOutput, 0, _cancelToken.Token))
         {
             WriteResult(currentOutput.Item1, currentOutput.Item2);
         }
@@ -278,18 +285,7 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
                 break;
 
             case PipelineType.Error:
-                ErrorRecord err = (ErrorRecord)data!;
-
-                // We need to set this internal property to replicate how
-                // Invoke-Command emits an ErrorRecord works.
-                // FUTURE: Use UnsafeAccessor once .NET 8.0 is minimum
-                _preserveInvocationInfoOnceProperty ??= typeof(ErrorRecord).GetProperty(
-                    "PreserveInvocationInfoOnce",
-                    BindingFlags.NonPublic | BindingFlags.Instance)
-                    ?? throw new RuntimeException("Failed to find internal property ErrorRecord.PreserveInvocationInfoOnce");
-                _preserveInvocationInfoOnceProperty.SetValue(err, true);
-
-                WriteError(err);
+                WriteError((ErrorRecord)data!);
                 break;
 
             case PipelineType.Information:
@@ -314,9 +310,28 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
                 await doneTask;
             }
 
-            if (connections.TryDequeue(out var info))
+            if (connections.TryDequeue(out StringForgeConnectionInfoPSSession? info))
             {
-                Task t = Task.Run(async () => await RunScript(info, script, arguments, parameters));
+                Task t = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await RunScript(info, script, arguments, parameters);
+                    }
+                    catch (Exception e)
+                    {
+                        string msg = $"Failed to run script on '{info}': {e.Message}";
+                        ErrorRecord errorRecord = new(
+                            e,
+                            "ExecuteException",
+                            ErrorCategory.NotSpecified,
+                            info.ToString())
+                        {
+                            ErrorDetails = new(msg),
+                        };
+                        _outputPipe.Add((PipelineType.Error, errorRecord));
+                    }
+                });
                 tasks.Add(t);
             }
         }
@@ -366,6 +381,14 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
             errorPipe.DataAdded += (s, e) =>
             {
                 ErrorRecord errorRecord = errorPipe[e.Index];
+
+                // Unfortunately this isn't exposed publicly but it's very nice
+                // to be able to link back a record with a remote connection.
+                _errorRecordSetTargetObject ??= typeof(ErrorRecord).GetMethod(
+                    "SetTargetObject",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                _errorRecordSetTargetObject?.Invoke(errorRecord, new[] { info.ToString() });
+
                 OriginInfo oi = new(info.ToString(), runspace.InstanceId);
                 RemotingErrorRecord remoteError = new(errorRecord, oi);
 
@@ -403,16 +426,10 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
             // Using an explicit PSInvocationSettings ensures the invocation
             // info isn't added to the error record which provides a more
             // consistent experience with Invoke-Command for error records.
+            // The InvocationInfo is also useless from the remote error record
+            // so returning it won't make any difference.
             PSInvocationSettings psis = new();
-            try
-            {
-                await ps.InvokeAsync(_inputPipe, outputPipe, psis, null, null);
-            }
-            catch (RemoteException e)
-            {
-                _outputPipe.Add((PipelineType.Error, e.ErrorRecord));
-                return;
-            }
+            await ps.InvokeAsync(_inputPipe, outputPipe, psis, null, null);
         }
         finally
         {
@@ -429,5 +446,54 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
         _inputPipe?.Dispose();
         _outputPipe?.Dispose();
         GC.SuppressFinalize(this);
+    }
+}
+
+public sealed class ArgumentsOrParametersTransformation : ArgumentTransformationAttribute
+{
+    public override object Transform(
+        EngineIntrinsics engineIntrinsics,
+        object inputData)
+    {
+        if (inputData is IList inputArray)
+        {
+            return new ArgumentsOrParameters(inputArray);
+        }
+        else if (inputData is IDictionary inputDict)
+        {
+            return new ArgumentsOrParameters(inputDict);
+        }
+        else
+        {
+            return new ArgumentsOrParameters(new[] { inputData });
+        }
+    }
+}
+
+public sealed class ArgumentsOrParameters
+{
+    internal PSObject?[]? Arguments { get; }
+    internal IDictionary? Parameters { get; }
+
+    public ArgumentsOrParameters(IList arguments)
+    {
+        Arguments = new PSObject?[arguments.Count];
+        for (int i = 0; i < arguments.Count; i++)
+        {
+            object? obj = arguments[i];
+            if (obj is PSObject psObj)
+            {
+                Arguments[i] = psObj;
+            }
+            else
+            {
+                Arguments[i] = obj == null ? null : PSObject.AsPSObject(obj);
+            }
+        }
+    }
+
+    public ArgumentsOrParameters(IDictionary parameters)
+    {
+        Parameters = parameters;
     }
 }

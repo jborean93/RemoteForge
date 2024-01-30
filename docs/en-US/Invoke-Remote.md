@@ -12,31 +12,17 @@ schema: 2.0.0
 
 ## SYNTAX
 
-### ScriptBlockArgList (Default)
+### ScriptBlock (Default)
 ```
-Invoke-Remote [-ComputerName] <StringForgeConnectionInfoPSSession[]> -ScriptBlock <ScriptBlock>
- [-ArgumentList <PSObject[]>] [-InputObject <PSObject[]>] [-ThrottleLimit <Int32>]
+Invoke-Remote [-ConnectionInfo] <StringForgeConnectionInfoPSSession[]> [-ScriptBlock] <String>
+ [[-ArgumentList] <ArgumentsOrParameters>] [-InputObject <PSObject[]>] [-ThrottleLimit <Int32>]
  [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
-### ScriptBlockParam
+### FilePath
 ```
-Invoke-Remote [-ComputerName] <StringForgeConnectionInfoPSSession[]> -ScriptBlock <ScriptBlock>
- [-ParamSplat <IDictionary>] [-InputObject <PSObject[]>] [-ThrottleLimit <Int32>]
- [-ProgressAction <ActionPreference>] [<CommonParameters>]
-```
-
-### FilePathArgList
-```
-Invoke-Remote [-ComputerName] <StringForgeConnectionInfoPSSession[]> -FilePath <String>
- [-ArgumentList <PSObject[]>] [-InputObject <PSObject[]>] [-ThrottleLimit <Int32>]
- [-ProgressAction <ActionPreference>] [<CommonParameters>]
-```
-
-### FilePathParam
-```
-Invoke-Remote [-ComputerName] <StringForgeConnectionInfoPSSession[]> -FilePath <String>
- [-ParamSplat <IDictionary>] [-InputObject <PSObject[]>] [-ThrottleLimit <Int32>]
+Invoke-Remote [-ConnectionInfo] <StringForgeConnectionInfoPSSession[]> [-FilePath] <String>
+ [[-ArgumentList] <ArgumentsOrParameters>] [-InputObject <PSObject[]>] [-ThrottleLimit <Int32>]
  [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
@@ -58,24 +44,24 @@ PS C:\> {{ Add example code here }}
 {{ Fill ArgumentList Description }}
 
 ```yaml
-Type: PSObject[]
-Parameter Sets: ScriptBlockArgList, FilePathArgList
-Aliases: Args
+Type: ArgumentsOrParameters
+Parameter Sets: (All)
+Aliases: Args, Param, Parameters
 
 Required: False
-Position: Named
+Position: 2
 Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
 ```
 
-### -ComputerName
-{{ Fill ComputerName Description }}
+### -ConnectionInfo
+{{ Fill ConnectionInfo Description }}
 
 ```yaml
 Type: StringForgeConnectionInfoPSSession[]
 Parameter Sets: (All)
-Aliases: Cn, Connection
+Aliases: ComputerName, Cn
 
 Required: True
 Position: 0
@@ -89,11 +75,11 @@ Accept wildcard characters: False
 
 ```yaml
 Type: String
-Parameter Sets: FilePathArgList, FilePathParam
+Parameter Sets: FilePath
 Aliases: PSPath
 
 Required: True
-Position: Named
+Position: 1
 Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -111,21 +97,6 @@ Required: False
 Position: Named
 Default value: None
 Accept pipeline input: True (ByPropertyName, ByValue)
-Accept wildcard characters: False
-```
-
-### -ParamSplat
-{{ Fill ParamSplat Description }}
-
-```yaml
-Type: IDictionary
-Parameter Sets: ScriptBlockParam, FilePathParam
-Aliases: Params
-
-Required: False
-Position: Named
-Default value: None
-Accept pipeline input: False
 Accept wildcard characters: False
 ```
 
@@ -148,12 +119,12 @@ Accept wildcard characters: False
 {{ Fill ScriptBlock Description }}
 
 ```yaml
-Type: ScriptBlock
-Parameter Sets: ScriptBlockArgList, ScriptBlockParam
+Type: String
+Parameter Sets: ScriptBlock
 Aliases:
 
 Required: True
-Position: Named
+Position: 1
 Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -179,7 +150,7 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 
 ## INPUTS
 
-### None
+### System.Management.Automation.PSObject[]
 ## OUTPUTS
 
 ### System.Object

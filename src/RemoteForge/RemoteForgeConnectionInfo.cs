@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 
 namespace RemoteForge;
 
-internal sealed class RemoteForgeConnectionInfo : RunspaceConnectionInfo
+public sealed class RemoteForgeConnectionInfo : RunspaceConnectionInfo
 {
     private IRemoteForge _transportFactory;
 
@@ -140,7 +140,14 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
             {
                 _cancelSource.Cancel();
             }
-            _worker?.Wait();
+            try
+            {
+                _worker?.Wait();
+            }
+            catch (AggregateException e) when (e.InnerException != null)
+            {
+                throw e.InnerException;
+            }
 
             // Dispose the resources after it has been closed.
             _cancelSource.Dispose();

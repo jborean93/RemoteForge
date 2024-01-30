@@ -13,7 +13,7 @@ schema: 2.0.0
 ## SYNTAX
 
 ```
-New-RemoteForgeSession [-ComputerName] <StringForgeConnectionInfoPSSession[]>
+New-RemoteForgeSession -ConnectionInfo <StringForgeConnectionInfoPSSession[]>
  [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
@@ -31,16 +31,16 @@ PS C:\> {{ Add example code here }}
 
 ## PARAMETERS
 
-### -ComputerName
-{{ Fill ComputerName Description }}
+### -ConnectionInfo
+{{ Fill ConnectionInfo Description }}
 
 ```yaml
 Type: StringForgeConnectionInfoPSSession[]
 Parameter Sets: (All)
-Aliases:
+Aliases: ComputerName, Cn
 
 Required: True
-Position: 0
+Position: Named
 Default value: None
 Accept pipeline input: True (ByValue)
 Accept wildcard characters: False

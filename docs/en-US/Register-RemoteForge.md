@@ -14,7 +14,7 @@ schema: 2.0.0
 
 ### Explicit (Default)
 ```
-Register-RemoteForge [-Id] <String> [-ForgeFactory] <System.Func`2[System.Uri,RemoteForge.IRemoteForge]>
+Register-RemoteForge [-Id] <String> [-ForgeFactory] <System.Func`2[System.String,RemoteForge.IRemoteForge]>
  [-Description <String>] [-PassThru] [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
@@ -72,7 +72,7 @@ Accept wildcard characters: False
 {{ Fill ForgeFactory Description }}
 
 ```yaml
-Type: System.Func`2[System.Uri,RemoteForge.IRemoteForge]
+Type: System.Func`2[System.String,RemoteForge.IRemoteForge]
 Parameter Sets: Explicit
 Aliases:
 

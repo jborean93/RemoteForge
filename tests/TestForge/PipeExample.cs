@@ -21,7 +21,6 @@ public sealed class PipeInfo : IRemoteForge
     public bool FailOnWrite { get; }
     public bool LogMessages { get; }
 
-
     private PipeInfo(
         string factoryUri,
         bool failOnClose,
