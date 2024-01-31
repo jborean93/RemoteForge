@@ -336,6 +336,106 @@ Describe "Invoke-Remote tests" {
         }
     }
 
+    It "Throttles concurrent sessions" {
+        $testDir = Join-Path TestDrive:/ ThrottleTests
+        $testPath = (New-Item -Path $testDir -ItemType Directory -Force).FullName
+
+        $ps = [PowerShell]::Create()
+        $null = $ps.AddScript({
+                param($RemoteForge, $TestForge, $TestPath)
+
+                $ErrorActionPreference = 'Stop'
+
+                Import-Module -Name $RemoteForge
+                Import-Module -Name $TestForge
+
+                Invoke-Remote @(
+                    'PipeTest:'
+                    'PipeTest:'
+                    'PipeTest:'
+                    'PipeTest:'
+                ) -ScriptBlock {
+                    $fileName = "$($using:TestPath)/$pid"
+                    [Console]::WriteLine("Writing to '$fileName'")
+                    Set-Content -LiteralPath $fileName -Value ''
+                    $pid
+
+                    $start = Get-Date
+                    while (Test-Path -LiteralPath $fileName) {
+                        $time = (Get-Date) - $start
+                        if ($time.TotalSeconds -gt 60) {
+                            throw "Timed out waiting for file to be deleted"
+                        }
+
+                        Start-Sleep -Milliseconds 200
+                    }
+                } -ThrottleLimit 2
+
+            }).AddParameters(@{
+                RemoteForge = (Get-Module -Name RemoteForge).Path
+                TestForge = (Get-Module -Name TestForge).Path
+                TestPath = $testPath
+            })
+
+        $out = [System.Management.Automation.PSDataCollection[PSObject]]::new()
+        $eventId = (New-Guid).Guid
+        Register-ObjectEvent -InputObject $out -EventName DataAdded -SourceIdentifier $eventId
+        try {
+            $task = $ps.BeginInvoke([System.Management.Automation.PSDataCollection[PSObject]]::new(), $out)
+
+            $dataAddedEvent = Wait-Event -SourceIdentifier $eventId -Timeout 30
+            if (-not $dataAddedEvent) {
+                throw "Timed out waiting for pid info for first connection"
+            }
+            $dataAddedEvent | Remove-Event
+            $pid1 = $out[$dataAddedEvent.SourceEventArgs.Index]
+
+            $dataAddedEvent = Wait-Event -SourceIdentifier $eventId -Timeout 30
+            if (-not $dataAddedEvent) {
+                throw "Timed out waiting for pid info for second connection"
+            }
+            $dataAddedEvent | Remove-Event
+            $pid2 = $out[$dataAddedEvent.SourceEventArgs.Index]
+
+            # -ThrottleLimit 2 limits the concurrent sessions to just 2
+            $dataAddedEvent = Wait-Event -SourceIdentifier $eventId -Timeout 1
+            $dataAddedEvent | Should -BeNullOrEmpty
+
+            # Deleting the first pid file will stop the first connection and
+            # queue up the 3rd one.
+            Remove-Item -LiteralPath (Join-Path $testPath $pid1) -Force
+
+            $dataAddedEvent = Wait-Event -SourceIdentifier $eventId -Timeout 30
+            if (-not $dataAddedEvent) {
+                throw "Timed out waiting for pid info for second connection"
+            }
+            $dataAddedEvent | Remove-Event
+            $pid3 = $out[$dataAddedEvent.SourceEventArgs.Index]
+
+            # The fourth should still not have started yet
+            $dataAddedEvent = Wait-Event -SourceIdentifier $eventId -Timeout 1
+            $dataAddedEvent | Should -BeNullOrEmpty
+
+            Remove-Item -LiteralPath (Join-Path $testPath $pid2) -Force
+
+            # After removing the above task pid the last connection will start.
+            $dataAddedEvent = Wait-Event -SourceIdentifier $eventId -Timeout 30
+            if (-not $dataAddedEvent) {
+                throw "Timed out waiting for pid info for second connection"
+            }
+            $dataAddedEvent | Remove-Event
+            $pid4 = $out[$dataAddedEvent.SourceEventArgs.Index]
+
+            Remove-Item -LiteralPath (Join-Path $testPath $pid3) -Force
+            Remove-Item -LiteralPath (Join-Path $testPath $pid4) -Force
+
+            $ps.EndInvoke($task)
+        }
+        finally {
+            Unregister-Event -SourceIdentifier $eventId
+        }
+    }
+
     It "Handles error with invalid script" {
         $n = [Environment]::NewLine
         $actual = Invoke-Remote -ConnectionInfo PipeTest: -ScriptBlock '$a $b' -ErrorAction SilentlyContinue -ErrorVariable err

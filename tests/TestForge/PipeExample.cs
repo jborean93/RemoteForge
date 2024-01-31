@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Specialized;
 using System.Diagnostics;
+using System.Reflection.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
@@ -21,6 +22,7 @@ public sealed class PipeInfo : IRemoteForge
     public bool EndOnRead { get; }
     public bool FailOnWrite { get; }
     public bool LogMessages { get; }
+    public bool Hang { get; }
 
     private PipeInfo(
         string factoryUri,
@@ -29,7 +31,8 @@ public sealed class PipeInfo : IRemoteForge
         bool failOnRead,
         bool endOnRead,
         bool failOnWrite,
-        bool logMessages
+        bool logMessages,
+        bool hang
     )
     {
         FailOnClose = failOnClose;
@@ -38,6 +41,7 @@ public sealed class PipeInfo : IRemoteForge
         EndOnRead = endOnRead;
         FailOnWrite = failOnWrite;
         LogMessages = logMessages;
+        Hang = hang;
         _factoryUri = factoryUri;
     }
 
@@ -48,14 +52,15 @@ public sealed class PipeInfo : IRemoteForge
             FailOnRead,
             EndOnRead,
             FailOnWrite,
-            LogMessages);
+            LogMessages,
+            Hang);
 
     public string GetTransportString() => _factoryUri;
 
     public static IRemoteForge Create(string info)
     {
-        bool failOnClose, failOnCreate, failOnRead, endOnRead, failOnWrite, logMessages;
-        failOnClose = failOnCreate = failOnRead = endOnRead = failOnWrite = logMessages = false;
+        bool failOnClose, failOnCreate, failOnRead, endOnRead, failOnWrite, logMessages, hang;
+        failOnClose = failOnCreate = failOnRead = endOnRead = failOnWrite = logMessages = hang = false;
 
         Uri pipeUri = new($"PipeTest://{info}");
         NameValueCollection infoQueries = HttpUtility.ParseQueryString(pipeUri.Query);
@@ -89,16 +94,21 @@ public sealed class PipeInfo : IRemoteForge
             {
                 failOnWrite = result;
             }
+            else if (key == "hang" && bool.TryParse(value, out result))
+            {
+                hang = result;
+            }
         }
 
         return new PipeInfo(
-            info,
+            $"PipeTest:{info}",
             failOnClose,
             failOnCreate,
             failOnRead,
             endOnRead,
             failOnWrite,
-            logMessages);
+            logMessages,
+            hang);
     }
 }
 
@@ -111,6 +121,7 @@ public sealed class PipeTransport : IRemoteForgeTransport, IDisposable
     private readonly bool _endOnRead;
     private readonly bool _failOnWrite;
     private readonly bool _logMessages;
+    private readonly bool _hang;
 
 
     internal PipeTransport(
@@ -119,7 +130,8 @@ public sealed class PipeTransport : IRemoteForgeTransport, IDisposable
         bool failOnRead,
         bool endOfRead,
         bool failOnWrite,
-        bool logMessages)
+        bool logMessages,
+        bool hang)
     {
         _failOnClose = failOnClose;
         _failOnCreate = failOnCreate;
@@ -127,6 +139,7 @@ public sealed class PipeTransport : IRemoteForgeTransport, IDisposable
         _endOnRead = endOfRead;
         _failOnWrite = failOnWrite;
         _logMessages = logMessages;
+        _hang = hang;
     }
 
     public Task CreateConnection(CancellationToken cancellationToken)
@@ -196,6 +209,10 @@ public sealed class PipeTransport : IRemoteForgeTransport, IDisposable
         else if (_endOnRead)
         {
             return null;
+        }
+        else if (_hang)
+        {
+            await Task.Delay(-1, cancellationToken);
         }
 
         string? msg = await _proc.StandardOutput.ReadLineAsync(cancellationToken);

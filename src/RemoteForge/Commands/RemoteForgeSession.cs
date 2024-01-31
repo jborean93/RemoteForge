@@ -28,7 +28,7 @@ public sealed class NewRemoteForgeSession : PSCmdlet, IDisposable
         {
             if (connection.PSSession != null)
             {
-                creationTasks.Add((connection.ToString(), new(() => connection.PSSession)));
+                creationTasks.Add((connection.ToString(), Task.FromResult(connection.PSSession)));
             }
             else
             {

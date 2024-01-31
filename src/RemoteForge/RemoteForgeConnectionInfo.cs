@@ -55,6 +55,9 @@ public sealed class RemoteForgeConnectionInfo : RunspaceConnectionInfo
             runspaceId: instanceId,
             cryptoHelper: cryptoHelper);
     }
+
+    public override string ToString()
+        => ConnectionUri;
 }
 
 internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTransportManagerBase

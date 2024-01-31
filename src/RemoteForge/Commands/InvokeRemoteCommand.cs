@@ -303,7 +303,7 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
         IDictionary? parameters)
     {
         Queue<StringForgeConnectionInfoPSSession> connections = new(ConnectionInfo);
-        List<Task> tasks = new(Math.Max(ThrottleLimit, ConnectionInfo.Length));
+        List<Task> tasks = new(Math.Min(ThrottleLimit, ConnectionInfo.Length));
         do
         {
             if (connections.Count == 0 || tasks.Count >= tasks.Capacity)
