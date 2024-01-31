@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Management.Automation.Runspaces;
 using System.Reflection;
@@ -18,24 +17,21 @@ public sealed class RemoteForgeRegistration
 
     internal static List<RemoteForgeRegistration> Registrations => _registrations ??= new();
 
-    public string Id { get; }
+    public string Name { get; }
     public string? Description { get; }
-    public bool IsDefault { get; }
     internal RemoteForgeFactory CreateFactory { get; }
 
     internal RemoteForgeRegistration(
-        string id,
+        string name,
         string? description,
-        bool isDefault,
         RemoteForgeFactory createFactory)
     {
-        Id = id;
+        Name = name;
         Description = description;
-        IsDefault = isDefault;
         CreateFactory = createFactory;
     }
 
-    public static RemoteForgeRegistration[] Register(Assembly assembly)
+    public static RemoteForgeRegistration[] Register(Assembly assembly, bool force = false)
     {
         List<RemoteForgeRegistration> registrations = new();
 
@@ -51,7 +47,7 @@ public sealed class RemoteForgeRegistration
                 BindingFlags.NonPublic | BindingFlags.Static)!;
             RemoteForgeRegistration registration = (RemoteForgeRegistration)registerMethod
                 .MakeGenericMethod(new[] { t })
-                .Invoke(null, null)!;
+                .Invoke(null, new object[] { force })!;
 
             registrations.Add(registration);
         }
@@ -59,72 +55,68 @@ public sealed class RemoteForgeRegistration
         return registrations.ToArray();
     }
 
-    private static RemoteForgeRegistration RegisterForgeType<T>() where T : IRemoteForge
-        => Register(T.ForgeId, T.Create, T.ForgeDescription);
-
-    public static RemoteForgeRegistration Register(
-        string id,
-        Func<string, IRemoteForge> factory,
-        string? description = null,
-        bool isDefault = false)
+    private static RemoteForgeRegistration RegisterForgeType<T>(bool force) where T : IRemoteForge
         => Register(
-            id,
-            (u) => new RemoteForgeConnectionInfo(factory(u)),
-            description: description,
-            isDefault: isDefault);
+            T.ForgeName,
+            (u) => new RemoteForgeConnectionInfo(T.Create(u)),
+            T.ForgeDescription,
+            force: force);
 
     public static RemoteForgeRegistration Register(
-        string id,
+        string name,
         RemoteForgeFactory factory,
         string? description = null,
-        bool isDefault = false
-    )
+        bool force = false)
+        => Register(name, factory, false, description: description, force: force);
+
+    internal static RemoteForgeRegistration Register(
+        string name,
+        RemoteForgeFactory factory,
+        bool doNotCheckExistingMethod,
+        string? description = null,
+        bool force = false)
     {
-        if (TryGetForgeRegistration(id, out RemoteForgeRegistration? forge))
+        if (TryGetForgeRegistration(name, out RemoteForgeRegistration? forge))
         {
-            if (forge.CreateFactory.Method == factory.Method)
+            if (!doNotCheckExistingMethod && forge.CreateFactory.Method == factory.Method)
             {
                 return forge;
             }
+            else if (force)
+            {
+                Registrations.Remove(forge);
+            }
             else
             {
-                throw new ArgumentException($"A forge with the id '{id}' has already been registered");
+                throw new ArgumentException($"A forge with the name '{name}' has already been registered");
             }
         }
 
-        RemoteForgeRegistration registration = new(id, description, isDefault, factory);
+        RemoteForgeRegistration registration = new(name, description, factory);
         Registrations.Add(registration);
 
         return registration;
     }
 
-    public static void Unregister(string id)
+    public static void Unregister(string name)
     {
-        if (TryGetForgeRegistration(id, out RemoteForgeRegistration? forge))
+        if (TryGetForgeRegistration(name, out RemoteForgeRegistration? forge))
         {
             Registrations.Remove(forge);
         }
         else
         {
-            throw new ArgumentException($"No forge has been registered with the id '{id}'");
+            throw new ArgumentException($"No forge has been registered with the name '{name}'");
         }
     }
 
-    internal static RunspaceConnectionInfo CreateForgeConnectionInfo(string info)
+    public static RunspaceConnectionInfo CreateForgeConnectionInfo(string info)
     {
         string? scheme = null;
         int schemeSplit = info.IndexOf(':');
         if (schemeSplit == -1)
         {
-            foreach (RemoteForgeRegistration registeredForge in Registrations)
-            {
-                if (registeredForge.IsDefault)
-                {
-                    scheme = registeredForge.Id;
-                    break;
-                }
-            }
-            Debug.Assert(scheme != null);
+            scheme = "ssh";
         }
         else
         {
@@ -138,17 +130,17 @@ public sealed class RemoteForgeRegistration
             return forge.CreateFactory(info);
         }
 
-        throw new ArgumentException($"No valid forge registrations found with the id '{scheme}'");
+        throw new ArgumentException($"No valid forge registrations found with the name '{scheme}'");
     }
 
     private static bool TryGetForgeRegistration(
-        string id,
+        string name,
         [NotNullWhen(true)] out RemoteForgeRegistration? registration)
     {
-        string lowerId = id.ToLowerInvariant();
+        string lowerId = name.ToLowerInvariant();
         foreach (RemoteForgeRegistration forge in Registrations)
         {
-            if (forge.Id.ToLowerInvariant() == lowerId)
+            if (forge.Name.ToLowerInvariant() == lowerId)
             {
                 registration = forge;
                 return true;

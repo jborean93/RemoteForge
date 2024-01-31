@@ -12,7 +12,7 @@ public sealed class PipeInfo : IRemoteForge
 {
     private readonly string _factoryUri;
 
-    public static string ForgeId => "PipeTest";
+    public static string ForgeName => "PipeTest";
     public static string ForgeDescription => "Test pipe transport";
 
     public bool FailOnClose { get; }
@@ -141,7 +141,7 @@ public sealed class PipeTransport : IRemoteForgeTransport, IDisposable
             StartInfo = new()
             {
                 FileName = "pwsh",
-                Arguments = "-s",
+                Arguments = "-NoLogo -ServerMode",
                 RedirectStandardError = true,
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,

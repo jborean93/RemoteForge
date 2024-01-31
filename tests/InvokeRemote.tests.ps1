@@ -337,12 +337,13 @@ Describe "Invoke-Remote tests" {
     }
 
     It "Handles error with invalid script" {
+        $n = [Environment]::NewLine
         $actual = Invoke-Remote -ConnectionInfo PipeTest: -ScriptBlock '$a $b' -ErrorAction SilentlyContinue -ErrorVariable err
         $actual | Should -BeNullOrEmpty
 
         $err.Count | Should -Be 1
         $err[0].TargetObject | Should -Be 'PipeTest:'
-        [string]$err[0] | Should -Be "Failed to run script on 'PipeTest:': At line:1 char:4`n+ `$a `$b`n+    ~~`nUnexpected token '`$b' in expression or statement."
+        [string]$err[0] | Should -Be "Failed to run script on 'PipeTest:': At line:1 char:4${n}+ `$a `$b${n}+    ~~${n}Unexpected token '`$b' in expression or statement."
     }
 
     It "Writes errors from remote script" {

@@ -14,13 +14,13 @@ schema: 2.0.0
 
 ### Explicit (Default)
 ```
-Register-RemoteForge -Name <String> [-ForgeFactory] <System.Func`2[System.String,RemoteForge.IRemoteForge]>
- [-Description <String>] [-PassThru] [-ProgressAction <ActionPreference>] [<CommonParameters>]
+Register-RemoteForge -Name <String> [-ForgeFactory] <ScriptBlock> [-Description <String>] [-PassThru] [-Force]
+ [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
 ### Assembly
 ```
-Register-RemoteForge [-Assembly] <Assembly> [-PassThru] [-ProgressAction <ActionPreference>]
+Register-RemoteForge [-Assembly] <Assembly> [-PassThru] [-Force] [-ProgressAction <ActionPreference>]
  [<CommonParameters>]
 ```
 
@@ -68,13 +68,28 @@ Accept pipeline input: False
 Accept wildcard characters: False
 ```
 
+### -Force
+{{ Fill Force Description }}
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
 ### -ForgeFactory
 {{ Fill ForgeFactory Description }}
 
 ```yaml
-Type: System.Func`2[System.String,RemoteForge.IRemoteForge]
+Type: ScriptBlock
 Parameter Sets: Explicit
-Aliases:
+Aliases: Factory
 
 Required: True
 Position: 1
@@ -89,7 +104,7 @@ Accept wildcard characters: False
 ```yaml
 Type: String
 Parameter Sets: Explicit
-Aliases: Id
+Aliases:
 
 Required: True
 Position: Named

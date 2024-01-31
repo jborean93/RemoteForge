@@ -257,8 +257,6 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
         {
             // Throws ChannelClosedException if the writer is complete
             string msg = await reader.ReadAsync(_cancelSource.Token);
-
-            // FIXME: Capture exceptions raised here
             await transport.WriteMessage(msg, _cancelSource.Token);
         }
     }
@@ -278,5 +276,4 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
             HandleOutputDataReceived(message);
         }
     }
-
 }

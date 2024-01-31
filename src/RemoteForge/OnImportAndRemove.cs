@@ -11,8 +11,7 @@ public class OnModuleImportAndRemove : IModuleAssemblyInitializer, IModuleAssemb
         RemoteForgeRegistration.Register(
             "ssh",
             CreateSshConnectionInfo,
-            description: "Builtin SSH transport",
-            isDefault: true);
+            description: "Builtin SSH transport");
         // winrm
         // hyperv
         // pwsh

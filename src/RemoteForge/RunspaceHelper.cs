@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace RemoteForge.Commands;
 
-internal static class RunspaceHelper
+public static class RunspaceHelper
 {
     private class RunspaceStateWaiter
     {

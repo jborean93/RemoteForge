@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Management.Automation;
+using System.Management.Automation.Runspaces;
 using System.Reflection;
 
 namespace RemoteForge.Commands;
@@ -32,9 +33,9 @@ public sealed class GetRemoteForgeCommand : PSCmdlet
     {
         foreach (RemoteForgeRegistration forge in RemoteForgeRegistration.Registrations.ToArray())
         {
-            WriteVerbose($"Checking for forge '{forge.Id}' matches requested Name");
+            WriteVerbose($"Checking for forge '{forge.Name}' matches requested Name");
 
-            if (MatchesName(forge.Id))
+            if (MatchesName(forge.Name))
             {
                 WriteObject(forge);
             }
@@ -74,7 +75,6 @@ public sealed class RegisterRemoteForgeCommand : PSCmdlet
         ParameterSetName = "Explicit"
     )]
     [ValidateNotNullOrEmpty]
-    [Alias("Id")]
     public string Name { get; set; } = "";
 
     [Parameter(
@@ -82,7 +82,8 @@ public sealed class RegisterRemoteForgeCommand : PSCmdlet
         Position = 1,
         ParameterSetName = "Explicit"
     )]
-    public Func<string, IRemoteForge>? ForgeFactory { get; set; }
+    [Alias("Factory")]
+    public ScriptBlock? ForgeFactory { get; set; }
 
     [Parameter(
         ParameterSetName = "Explicit"
@@ -99,6 +100,9 @@ public sealed class RegisterRemoteForgeCommand : PSCmdlet
     [Parameter]
     public SwitchParameter PassThru { get; set; }
 
+    [Parameter]
+    public SwitchParameter Force { get; set; }
+
     protected override void EndProcessing()
     {
         try
@@ -108,8 +112,10 @@ public sealed class RegisterRemoteForgeCommand : PSCmdlet
                 Debug.Assert(ForgeFactory != null);
                 RemoteForgeRegistration registration = RemoteForgeRegistration.Register(
                     Name,
-                    ForgeFactory,
-                    description: Description);
+                    (i) => CreateConnectionInfoFromFactory(i, ForgeFactory),
+                    true,
+                    description: Description,
+                    force: Force);
 
                 if (PassThru)
                 {
@@ -119,7 +125,9 @@ public sealed class RegisterRemoteForgeCommand : PSCmdlet
             else
             {
                 Debug.Assert(Assembly != null);
-                RemoteForgeRegistration[] registrations = RemoteForgeRegistration.Register(Assembly);
+                RemoteForgeRegistration[] registrations = RemoteForgeRegistration.Register(
+                    Assembly,
+                    force: Force);
                 if (PassThru)
                 {
                     foreach (RemoteForgeRegistration registration in registrations)
@@ -139,6 +147,24 @@ public sealed class RegisterRemoteForgeCommand : PSCmdlet
             WriteError(err);
         }
     }
+
+    private RunspaceConnectionInfo CreateConnectionInfoFromFactory(string info, ScriptBlock factory)
+    {
+        foreach (PSObject? item in factory.Invoke(info))
+        {
+            if (item?.BaseObject is RunspaceConnectionInfo connInfo)
+            {
+                return connInfo;
+            }
+            else if (item?.BaseObject is IRemoteForge forgeFactory)
+            {
+                return new RemoteForgeConnectionInfo(forgeFactory);
+            }
+        }
+
+        throw new ArgumentException(
+            $"Factory result for '{Name}:{info}' did not output a RunspaceConnectionInfo or IRemoteForge object");
+    }
 }
 
 [Cmdlet(
@@ -154,7 +180,6 @@ public sealed class UnregisterRemoteForgeCommand : PSCmdlet
         ValueFromPipelineByPropertyName = true
     )]
     [ValidateNotNullOrEmpty]
-    [Alias("Id")]
     public string[] Name { get; set; } = Array.Empty<string>();
 
     protected override void ProcessRecord()

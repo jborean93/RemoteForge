@@ -1,5 +1,3 @@
-using System;
-
 namespace RemoteForge;
 
 /// <summary>
@@ -14,7 +12,7 @@ public interface IRemoteForge
     /// unique as it's used by the Uri scheme to determine what transport to
     /// use.
     /// </summary>
-    protected internal static virtual string ForgeId => throw new NotImplementedException();
+    protected internal static abstract string ForgeName { get; }
 
     /// <summary>
     /// The description of the transport to use with the forge registration.
@@ -43,5 +41,5 @@ public interface IRemoteForge
     /// </summary>
     /// <param name="info">The string containing the connection info.</param>
     /// <returns>The IRemoteForge instance for the string provided.</returns>
-    protected internal static virtual IRemoteForge Create(string info) => throw new NotImplementedException();
+    protected internal static abstract IRemoteForge Create(string info);
 }

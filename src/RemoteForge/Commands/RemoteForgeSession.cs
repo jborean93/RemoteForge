@@ -23,16 +23,16 @@ public sealed class NewRemoteForgeSession : PSCmdlet, IDisposable
 
     protected override void ProcessRecord()
     {
-        List<Task<PSSession>> creationTasks = new();
+        List<(string, Task<PSSession>)> creationTasks = new();
         foreach (StringForgeConnectionInfoPSSession connection in ConnectionInfo)
         {
             if (connection.PSSession != null)
             {
-                creationTasks.Add(new(() => connection.PSSession));
+                creationTasks.Add((connection.ToString(), new(() => connection.PSSession)));
             }
             else
             {
-                creationTasks.Add(Task.Run(async () =>
+                creationTasks.Add((connection.ToString(), Task.Run(async () =>
                 {
                     Runspace rs = await RunspaceHelper.CreateRunspaceAsync(
                         connection.ConnectionInfo,
@@ -43,11 +43,11 @@ public sealed class NewRemoteForgeSession : PSCmdlet, IDisposable
                         runspace: rs,
                         transportName: "RemoteForge",
                         psCmdlet: this);
-                }));
+                })));
             }
         }
 
-        foreach (Task<PSSession> task in creationTasks)
+        foreach ((string connInfo, Task<PSSession> task) in creationTasks)
         {
             try
             {
@@ -64,9 +64,9 @@ public sealed class NewRemoteForgeSession : PSCmdlet, IDisposable
                     e,
                     "RemoteForgeFailedConnection",
                     ErrorCategory.ConnectionError,
-                    null)
+                    connInfo)
                 {
-                    ErrorDetails = new($"Failed to open runspace for 'FIXME': {e.Message}")
+                    ErrorDetails = new($"Failed to open runspace for '{connInfo}': {e.Message}")
                 };
 
                 WriteError(err);
@@ -86,7 +86,7 @@ public sealed class NewRemoteForgeSession : PSCmdlet, IDisposable
 
 public sealed class StringForgeConnectionInfoPSSession
 {
-    private readonly string? _originalString;
+    private readonly string _originalString;
     internal RunspaceConnectionInfo ConnectionInfo { get; }
     internal PSSession? PSSession { get; }
 
@@ -98,23 +98,34 @@ public sealed class StringForgeConnectionInfoPSSession
 
     public StringForgeConnectionInfoPSSession(IRemoteForge forge)
     {
+        _originalString = forge.GetTransportString();
         ConnectionInfo = new RemoteForgeConnectionInfo(forge);
     }
 
     public StringForgeConnectionInfoPSSession(RunspaceConnectionInfo info)
     {
+        _originalString = GetConnectionInfoString(info);
         ConnectionInfo = info;
     }
 
     public StringForgeConnectionInfoPSSession(PSSession session)
     {
         ConnectionInfo = session.Runspace.OriginalConnectionInfo;
+        _originalString = GetConnectionInfoString(ConnectionInfo);
         PSSession = session;
     }
 
-    public override string ToString()
+    private static string GetConnectionInfoString(RunspaceConnectionInfo info) => info switch
     {
-        // TODO: Get better value for other examples
-        return _originalString ?? ConnectionInfo.GetType().FullName!;
-    }
+        RemoteForgeConnectionInfo f => f.ConnectionUri,
+        SSHConnectionInfo => $"ssh:{info.ComputerName}",
+        WSManConnectionInfo => $"wsman:{info.ComputerName}",
+        NamedPipeConnectionInfo p => $"pipe:{p.CustomPipeName}",
+        ContainerConnectionInfo => $"container:{info.ComputerName}",
+        VMConnectionInfo => $"vm:{info.ComputerName}",
+        _ => $"{info.GetType().Name}:{info.ComputerName}",
+    };
+
+    public override string ToString()
+        => _originalString;
 }
