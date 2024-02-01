@@ -2,6 +2,7 @@ using System;
 using System.Management.Automation;
 using System.Management.Automation.Host;
 using System.Management.Automation.Runspaces;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -63,7 +64,15 @@ public static class RunspaceHelper
                 }
             }
 
-            return await waiter.Wait(cancellationToken);
+            try
+            {
+                return await waiter.Wait(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                runspace.Dispose();
+                throw;
+            }
         }
     }
 

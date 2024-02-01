@@ -158,11 +158,29 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
             parameters["--%"] = usingParameters;
         }
 
+        Queue<(Runspace?, RunspaceConnectionInfo, string)> connectionQueue = new(ConnectionInfo.Length);
+        foreach (StringForgeConnectionInfoPSSession conn in ConnectionInfo)
+        {
+            RunspaceConnectionInfo? connInfo = conn.GetConnectionInfo(this);
+            if (connInfo == null)
+            {
+                continue;
+            }
+            connectionQueue.Enqueue((conn.PSSession?.Runspace, connInfo, conn.ToString()));
+        }
+
+        if (connectionQueue.Count == 0)
+        {
+            _outputPipe.CompleteAdding();
+            return;
+        }
+
         _worker = Task.Run(async () =>
         {
             try
             {
                 await RunWorker(
+                    connectionQueue,
                     commandToRun,
                     arguments: arguments,
                     parameters: parameters);
@@ -298,12 +316,12 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
     }
 
     private async Task RunWorker(
+        Queue<(Runspace?, RunspaceConnectionInfo, string)> connections,
         string script,
         PSObject?[] arguments,
         IDictionary? parameters)
     {
-        Queue<StringForgeConnectionInfoPSSession> connections = new(ConnectionInfo);
-        List<Task> tasks = new(Math.Min(ThrottleLimit, ConnectionInfo.Length));
+        List<Task> tasks = new(Math.Min(ThrottleLimit, connections.Count));
         do
         {
             if (connections.Count == 0 || tasks.Count >= tasks.Capacity)
@@ -313,22 +331,22 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
                 await doneTask;
             }
 
-            if (connections.TryDequeue(out StringForgeConnectionInfoPSSession? info))
+            if (connections.TryDequeue(out (Runspace?, RunspaceConnectionInfo, string) info))
             {
                 Task t = Task.Run(async () =>
                 {
                     try
                     {
-                        await RunScript(info, script, arguments, parameters);
+                        await RunScript(info.Item1, info.Item2, info.Item3, script, arguments, parameters);
                     }
                     catch (Exception e)
                     {
-                        string msg = $"Failed to run script on '{info}': {e.Message}";
+                        string msg = $"Failed to run script on '{info.Item3}': {e.Message}";
                         ErrorRecord errorRecord = new(
                             e,
                             "ExecuteException",
                             ErrorCategory.NotSpecified,
-                            info.ToString())
+                            info.Item3)
                         {
                             ErrorDetails = new(msg),
                         };
@@ -342,18 +360,19 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
     }
 
     private async Task RunScript(
-        StringForgeConnectionInfoPSSession info,
+        Runspace? runspace,
+        RunspaceConnectionInfo connInfo,
+        string connId,
         string script,
         PSObject?[] arguments,
         IDictionary? parameters)
     {
         bool disposeRunspace = false;
-        Runspace? runspace = info.PSSession?.Runspace;
         if (runspace == null)
         {
             disposeRunspace = true;
             runspace = await RunspaceHelper.CreateRunspaceAsync(
-                info.ConnectionInfo,
+                connInfo,
                 _cancelToken.Token,
                 host: Host,
                 typeTable: null,
@@ -373,7 +392,7 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
                 PSObject? obj = outputPipe[e.Index];
                 if (obj != null)
                 {
-                    obj.Properties.Add(new PSNoteProperty("PSComputerName", info.ToString()));
+                    obj.Properties.Add(new PSNoteProperty("PSComputerName", connId));
                     obj.Properties.Add(new PSNoteProperty("RunspaceId", runspace.InstanceId));
                     obj.Properties.Add(new PSNoteProperty("PSShowComputerName", true));
                 }
@@ -390,9 +409,9 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
                 _errorRecordSetTargetObject ??= typeof(ErrorRecord).GetMethod(
                     "SetTargetObject",
                     BindingFlags.Instance | BindingFlags.NonPublic);
-                _errorRecordSetTargetObject?.Invoke(errorRecord, new[] { info.ToString() });
+                _errorRecordSetTargetObject?.Invoke(errorRecord, new[] { connId });
 
-                OriginInfo oi = new(info.ToString(), runspace.InstanceId);
+                OriginInfo oi = new(connId, runspace.InstanceId);
                 RemotingErrorRecord remoteError = new(errorRecord, oi);
 
                 _outputPipe.Add((PipelineType.Error, remoteError));

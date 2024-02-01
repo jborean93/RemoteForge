@@ -48,6 +48,34 @@ Describe "New-RemoteForgeSession tests" {
         }
     }
 
+    It "Cancels hanging runspace creation" {
+        $ps = [PowerShell]::Create()
+        $null = $ps.AddScript({
+                param($RemoteForge, $TestForge, $TestPath)
+
+                $ErrorActionPreference = 'Stop'
+
+                Import-Module -Name $RemoteForge
+                Import-Module -Name $TestForge
+
+                New-RemoteForgeSession PipeTest:?hang=true
+            }).AddParameters(@{
+                RemoteForge = (Get-Module -Name RemoteForge).Path
+                TestForge = (Get-Module -Name TestForge).Path
+            })
+
+        $task = $ps.BeginInvoke()
+
+        Start-Sleep -Seconds 1
+
+        $ps.Stop()
+
+        try {
+            $ps.EndInvoke($task)
+        }
+        catch {}
+    }
+
     It "Handles error when create failed" {
         $actual = New-RemoteForgeSession PipeTest:?failoncreate=true -ErrorAction SilentlyContinue -ErrorVariable err
         $actual | Should -BeNullOrEmpty

@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace RemoteForge;
 
 /// <summary>
@@ -19,6 +21,7 @@ public interface IRemoteForge
     /// It should describe the transport as it is displayed with the
     /// registration info.
     /// </summary>
+    [ExcludeFromCodeCoverage]
     protected internal static virtual string? ForgeDescription => null;
 
     /// <summary>
@@ -26,7 +29,8 @@ public interface IRemoteForge
     /// transport when displaying an error.
     /// </summary>
     /// <returns>The transport string.</returns>
-    string GetTransportString() => this.GetType().Name;
+    [ExcludeFromCodeCoverage]
+    string GetTransportString() => GetType().Name;
 
     /// <summary>
     /// Called to create the transport instance that does the actual remote

@@ -18,6 +18,13 @@ Describe "Invoke-Remote tests" {
         $actual.PSShowComputerName | Should -BeTrue
     }
 
+    It "Invokes with default scheme" {
+        $PSRemoteForgeDefault = 'PipeTest'
+
+        $actual = Invoke-Remote '' -ScriptBlock { 'foo' }
+        $actual | Should -Be foo
+    }
+
     It "Uses -ConnectionInfo as ComputerName alias" {
         $actual = Invoke-Remote -ComputerName PipeTest: -ScriptBlock {
             "foo"
@@ -246,6 +253,14 @@ Describe "Invoke-Remote tests" {
         {
             Invoke-Remote -ConnectionInfo PipeTest: -FilePath env:/test
         } | Should -Throw "The resolved path 'test' is not a FileSystem path but Environment"
+    }
+
+    It "Fails with unknown forge registration name" {
+        $actual = Invoke-Remote InvalidForge: { 'foo' } -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual | Should -BeNullOrEmpty
+
+        $err.Count | Should -Be 1
+        [string]$err[0] | Should -Be "No valid forge registration found with the name 'InvalidForge'"
     }
 
     It "Writes information records" {

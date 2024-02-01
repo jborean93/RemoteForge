@@ -16,8 +16,6 @@ public sealed class RemoteForgeConnectionInfo : RunspaceConnectionInfo
 {
     private IRemoteForge _transportFactory;
 
-    public int ConnectingTimeout { get; set; }
-
     public override string ComputerName { get; set; } = string.Empty;
 
     public override PSCredential? Credential { get; set; }
@@ -65,6 +63,9 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
     private readonly CancellationTokenSource _cancelSource = new();
     private readonly IRemoteForge _transportFactory;
     private readonly TaskCompletionSource _closeTask = new();
+
+    private ChannelWriter<string>? _writer;
+    private bool _hasRead;
     private Task? _worker;
 
     private class MessageWriter : TextWriter
@@ -125,6 +126,31 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
         => _closeTask.SetResult(); // Signals the task to close the connection.
 
     /// <summary>
+    /// Called when Runspace.Close()/CloseAsync()/Dispose() is called.
+    /// </summary>
+    /// <remarks>
+    /// We use this as an opportunity to cancel our worker in case it hasn't
+    /// successfully read any data yet.
+    /// </remarks>
+    public override void CloseAsync()
+    {
+        // We need to check if this is due to an abnormal close to stop our
+        // worker.
+        if (!_hasRead && _writer != null)
+        {
+            _cancelSource.Cancel();
+
+            // Closing the writer ensures the transport writer will raise the
+            // IOException needed to get the Runspace Close code to complete.
+            _writer.TryComplete();
+        }
+
+        // The base method sends the close packet so needs to be called in a
+        // normal scenario.
+        base.CloseAsync();
+    }
+
+    /// <summary>
     /// Disposes the client transport and attempts to clean everything up.
     /// </summary>
     /// <param name="isDisposing">This has been called from an explicit Dispose() call.</param>
@@ -171,7 +197,7 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
             SingleReader = true,
             SingleWriter = false,  // MessageWriter and us use it to mark as completed
         });
-        ChannelWriter<string> writer = messageChannel.Writer;
+        ChannelWriter<string> writer = _writer = messageChannel.Writer;
         ChannelReader<string> reader = messageChannel.Reader;
 
         TransportMethodEnum currentStage = TransportMethodEnum.CreateShellEx;
@@ -276,6 +302,8 @@ internal sealed class RemoteForgeClientSessionTransportManager : ClientSessionTr
             {
                 break;
             }
+
+            _hasRead = true;
             HandleOutputDataReceived(message);
         }
     }

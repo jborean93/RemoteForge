@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 using System.Reflection;
 
@@ -116,7 +117,19 @@ public sealed class RemoteForgeRegistration
         int schemeSplit = info.IndexOf(':');
         if (schemeSplit == -1)
         {
-            scheme = "ssh";
+            if (Runspace.DefaultRunspace != null)
+            {
+                // We can't access it through
+                // Runspace.DefaultRunspace.SessionStateProxy as it might be
+                // busy running this very command.
+                scheme = LanguagePrimitives.ConvertTo<string>(
+                    ScriptBlock.Create("$PSRemoteForgeDefault").Invoke());
+            }
+
+            if (string.IsNullOrWhiteSpace(scheme))
+            {
+                scheme = "ssh";
+            }
         }
         else
         {
@@ -130,7 +143,7 @@ public sealed class RemoteForgeRegistration
             return forge.CreateFactory(info);
         }
 
-        throw new ArgumentException($"No valid forge registrations found with the name '{scheme}'");
+        throw new ArgumentException($"No valid forge registration found with the name '{scheme}'");
     }
 
     private static bool TryGetForgeRegistration(

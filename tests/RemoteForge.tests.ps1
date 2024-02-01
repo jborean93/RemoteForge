@@ -146,14 +146,42 @@ Describe "Register-RemoteForge tests" {
             $forge.Name | Should -Be TestFactory
             $forge.Description | Should -Be 'My Desc'
 
-            $expected = @(
-                "Cannot bind parameter 'ConnectionInfo'. Cannot convert value ""TestFactory:"" to type "
-                """RemoteForge.Commands.StringForgeConnectionInfoPSSession"". Error: ""Factory result for "
-                "'TestFactory:' did not output a RunspaceConnectionInfo or IRemoteForge object"""
-            ) -join ""
-            {
-                Invoke-Remote -ConnectionInfo TestFactory: { $pid }
-            } | Should -Throw $expected
+            $actual = Invoke-Remote TestFactory: { $pid } -ErrorAction SilentlyContinue -ErrorVariable err
+            $actual | Should -BeNullOrEmpty
+            $err.Count | Should -Be 1
+            [string]$err[0] | Should -Be "Factory result for 'TestFactory:' did not output a RunspaceConnectionInfo or IRemoteForge object"
+
+            $err = $null
+            $actual = New-RemoteForgeSession TestFactory: -ErrorAction SilentlyContinue -ErrorVariable err
+            $actual | Should -BeNullOrEmpty
+            $err.Count | Should -Be 1
+            [string]$err[0] | Should -Be "Factory result for 'TestFactory:' did not output a RunspaceConnectionInfo or IRemoteForge object"
+        }
+        finally {
+            Unregister-RemoteForge -Name TestFactory
+        }
+    }
+
+    It "Uses failed factory and good connection info" {
+        Register-RemoteForge -Name TestFactory -Description 'My Desc' -ForgeFactory {
+            param($Info)
+
+            $null
+            1
+            $Info
+        }
+
+        try {
+            $forge = Get-RemoteForge -Name TestFactory
+            $forge.Count | Should -Be 1
+            $forge.Name | Should -Be TestFactory
+            $forge.Description | Should -Be 'My Desc'
+
+            $actual = Invoke-Remote TestFactory:, PipeTest: { 'foo' } -ErrorAction SilentlyContinue -ErrorVariable err
+            $actual.Count | Should -Be 1
+            $actual | Should -Be foo
+            $err.Count | Should -Be 1
+            [string]$err[0] | Should -Be "Factory result for 'TestFactory:' did not output a RunspaceConnectionInfo or IRemoteForge object"
         }
         finally {
             Unregister-RemoteForge -Name TestFactory
