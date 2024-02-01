@@ -1,10 +1,12 @@
 using System;
 using System.Collections;
 using System.Globalization;
+using System.IO;
 using System.Management.Automation;
 using System.Management.Automation.Remoting;
 using System.Management.Automation.Runspaces;
 using System.Threading;
+using Microsoft.PowerShell.Commands;
 
 namespace RemoteForge.Commands;
 
@@ -39,16 +41,53 @@ public sealed class NewSSHForgeInfoCommand : PSCmdlet
     protected override void EndProcessing()
     {
         (string hostname, int port, string? userName) = ParseSSHInfo(HostName);
+        string? keyFilePath = ResolveKeyFilePath();
+
         SSHConnectionInfo connInfo = new(
             string.IsNullOrWhiteSpace(UserName) ? userName : UserName,
             hostname,
-            KeyFilePath,
+            keyFilePath,
             Port == -1 ? port : Port,
             Subsystem,
             ConnectingTimeout,
             Options
         );
         WriteObject(connInfo);
+    }
+
+    private string? ResolveKeyFilePath()
+    {
+        if (string.IsNullOrWhiteSpace(KeyFilePath))
+        {
+            return null;
+        }
+        string resolvedPath = SessionState.Path.GetUnresolvedProviderPathFromPSPath(
+            KeyFilePath,
+            out ProviderInfo provider,
+            out PSDriveInfo _);
+
+        if (provider.ImplementingType != typeof(FileSystemProvider))
+        {
+            ErrorRecord err = new(
+                new ArgumentException($"The resolved KeyFilePath '{resolvedPath}' is not a FileSystem path but {provider.Name}"),
+                "KeyFilePathNotFileSystem",
+                ErrorCategory.InvalidArgument,
+                KeyFilePath);
+            WriteError(err);
+            return null;
+        }
+        else if (!File.Exists(resolvedPath))
+        {
+            ErrorRecord err = new(
+                new FileNotFoundException($"Cannot find KeyFilePath '{resolvedPath}' because it does not exist", resolvedPath),
+                "KeyFilePathNotFound",
+                ErrorCategory.ObjectNotFound,
+                KeyFilePath);
+            WriteError(err);
+            return null;
+        }
+
+        return resolvedPath;
     }
 
     internal static (string, int, string?) ParseSSHInfo(string info)
@@ -145,13 +184,15 @@ public sealed class NewWSManForgeInfoCommand : PSCmdlet
     public PSCredential? Credential { get; set; }
 
     [Parameter]
-    public string CertificateThumbprint { get; set; } = string.Empty;
+    public string? CertificateThumbprint { get; set; }
 
     protected override void EndProcessing()
     {
         if (ConnectionUri == null)
         {
-            string scheme = UseSSL ? "https" : "http";
+            string scheme = UseSSL
+                ? "https"
+                : "http";
             int port = Port == -1
                 ? UseSSL ? 5986 : 5985
                 : Port;
@@ -159,12 +200,12 @@ public sealed class NewWSManForgeInfoCommand : PSCmdlet
             ConnectionUri = uriBuilder.Uri;
         }
 
+        string shellUri = $"http://schemas.microsoft.com/powershell/{ConfigurationName}";
         PSSessionOption so = SessionOption ?? new();
-        WSManConnectionInfo connInfo = new(ConnectionUri)
+        WSManConnectionInfo connInfo = new(ConnectionUri, shellUri, Credential)
         {
             AuthenticationMechanism = Authentication,
             CancelTimeout = (int)so.CancelTimeout.TotalMilliseconds,
-            CertificateThumbprint = CertificateThumbprint,
             Credential = Credential,
             Culture = so.Culture ?? CultureInfo.CurrentCulture,
             IdleTimeout = (int)so.IdleTimeout.TotalMilliseconds,
@@ -178,7 +219,6 @@ public sealed class NewWSManForgeInfoCommand : PSCmdlet
             OperationTimeout = (int)so.OperationTimeout.TotalMilliseconds,
             OutputBufferingMode = so.OutputBufferingMode,
             ProxyAccessType = so.ProxyAccessType,
-            ProxyAuthentication = so.ProxyAuthentication,
             SkipCACheck = so.SkipCACheck,
             SkipCNCheck = so.SkipCNCheck,
             SkipRevocationCheck = so.SkipRevocationCheck,
@@ -186,6 +226,17 @@ public sealed class NewWSManForgeInfoCommand : PSCmdlet
             UseCompression = !so.NoCompression,
             UseUTF16 = so.UseUTF16,
         };
+
+        // The following options require the defaults to be preserved
+        // if not explicitly set.
+        if (!string.IsNullOrWhiteSpace(CertificateThumbprint))
+        {
+            connInfo.CertificateThumbprint = CertificateThumbprint;
+        }
+        if (SessionOption != null)
+        {
+            connInfo.ProxyAuthentication = SessionOption.ProxyAuthentication;
+        }
         if (so.ProxyAccessType != ProxyAccessType.None)
         {
             connInfo.ProxyCredential = so.ProxyCredential;
