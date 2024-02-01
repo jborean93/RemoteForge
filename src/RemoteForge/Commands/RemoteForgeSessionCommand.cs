@@ -11,7 +11,7 @@ namespace RemoteForge.Commands;
 
 [Cmdlet(VerbsCommon.New, "RemoteForgeSession")]
 [OutputType(typeof(PSSession))]
-public sealed class NewRemoteForgeSession : PSCmdlet, IDisposable
+public sealed class NewRemoteForgeSessionCommand : PSCmdlet, IDisposable
 {
     private CancellationTokenSource _cancelTokenSource = new();
 

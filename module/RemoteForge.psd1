@@ -79,6 +79,8 @@
         'Get-RemoteForge'
         'Invoke-Remote'
         'New-RemoteForgeSession'
+        'New-SSHForgeInfo'
+        'New-WSManForgeInfo'
         'Register-RemoteForge'
         'Unregister-RemoteForge'
     )

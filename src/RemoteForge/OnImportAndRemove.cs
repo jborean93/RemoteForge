@@ -25,50 +25,7 @@ public class OnModuleImportAndRemove : IModuleAssemblyInitializer, IModuleAssemb
 
     private static SSHConnectionInfo CreateSshConnectionInfo(string info)
     {
-        // Split out the username portion first to allow UPNs that contain
-        // @ as well before the last @ that separates the user from the
-        // hostname. This is done because the Uri class will not work if the
-        // user contains two '@' chars.
-        string? userName = null;
-        string hostname;
-        int userSplitIdx = info.LastIndexOf('@');
-        int hostNameOffset = 0;
-        if (userSplitIdx == -1)
-        {
-            hostname = info;
-        }
-        else
-        {
-            hostNameOffset = userSplitIdx + 1;
-            userName = info.Substring(0, userSplitIdx);
-            hostname = info.Substring(userSplitIdx + 1);
-        }
-
-        // While we use the Uri class to validate and inspect the provided host
-        // string, it does canonicalise the value so we need to extract the
-        // original value used.
-        Uri sshUri = new($"ssh://{hostname}");
-
-        int port = sshUri.Port == -1 ? 22 : sshUri.Port;
-        if (sshUri.HostNameType == UriHostNameType.IPv6)
-        {
-            // IPv6 is enclosed with [] and is canonicalised so we need to just
-            // extract the value enclosed by [] from the original string for
-            // the hostname.
-            hostname = info[(1 + hostNameOffset)..info.IndexOf(']')];
-        }
-        else
-        {
-            // As the hostname is lower cased we need to extract the original
-            // string value.
-            int originalHostIndex = sshUri.OriginalString.IndexOf(
-                sshUri.Host,
-                StringComparison.OrdinalIgnoreCase);
-            hostname = originalHostIndex == -1
-                ? sshUri.Host
-                : sshUri.OriginalString.Substring(originalHostIndex, sshUri.Host.Length);
-        }
-
+        (string hostname, int port, string? userName) = Commands.NewSSHForgeInfoCommand.ParseSSHInfo(info);
         return new(userName, hostname, string.Empty, port);
     }
 
