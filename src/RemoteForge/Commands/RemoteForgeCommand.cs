@@ -75,7 +75,7 @@ public sealed class RegisterRemoteForgeCommand : PSCmdlet
         ParameterSetName = "Explicit"
     )]
     [ValidateNotNullOrEmpty]
-    public string Name { get; set; } = "";
+    public string Name { get; set; } = string.Empty;
 
     [Parameter(
         Mandatory = true,

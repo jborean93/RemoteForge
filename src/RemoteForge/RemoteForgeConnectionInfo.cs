@@ -16,7 +16,7 @@ public sealed class RemoteForgeConnectionInfo : RunspaceConnectionInfo
 {
     private IRemoteForge _transportFactory;
 
-    public override string ComputerName { get; set; } = string.Empty;
+    public override string? ComputerName { get; set; }
 
     public override PSCredential? Credential { get; set; }
 

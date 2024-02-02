@@ -20,6 +20,12 @@ Locale: en-US
 ### [New-RemoteForgeSession](New-RemoteForgeSession.md)
 {{ Fill in the Synopsis }}
 
+### [New-SSHForgeInfo](New-SSHForgeInfo.md)
+{{ Fill in the Synopsis }}
+
+### [New-WSManForgeInfo](New-WSManForgeInfo.md)
+{{ Fill in the Synopsis }}
+
 ### [Register-RemoteForge](Register-RemoteForge.md)
 {{ Fill in the Synopsis }}
 
