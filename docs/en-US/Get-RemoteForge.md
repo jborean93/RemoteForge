@@ -8,7 +8,7 @@ schema: 2.0.0
 # Get-RemoteForge
 
 ## SYNOPSIS
-{{ Fill in the Synopsis }}
+Gets the registered forges.
 
 ## SYNTAX
 
@@ -17,21 +17,40 @@ Get-RemoteForge [[-Name] <String[]>] [-ProgressAction <ActionPreference>] [<Comm
 ```
 
 ## DESCRIPTION
-{{ Fill in the Description }}
+Gets the forges that have been registered in the current session.
+This includes details such as the forge name and description if provided during registration.
+
+Forges can be registered with [Register-RemoteForge](./Register-RemoteForge.md) and unregistered with [Unregister-RemoteForge](./Unregister-RemoteForge.md).
 
 ## EXAMPLES
 
-### Example 1
+### Example 1: Get all registered forges
 ```powershell
-PS C:\> {{ Add example code here }}
+PS C:\> Get-RemoteForge
 ```
 
-{{ Add example description here }}
+Gets all registered forges.
+
+### Example 2: Get specific forge
+```powershell
+PS C:\> Get-RemoteForge -Name ssh
+```
+
+Gets the details of the `ssh` forge.
+
+### Example 3: Get forge with wildcard
+```powershell
+PS C:\> Get-RemoteForge -Name ws*
+```
+
+Gets all forges that match the wildcard `ws*`.
 
 ## PARAMETERS
 
 ### -Name
-{{ Fill Name Description }}
+The name of the forge to filter by.
+This supports simple wildcard matching with `*`, `?`, `[`, and `]`.
+Omit this parameter to get all registered forges.
 
 ```yaml
 Type: String[]
@@ -46,7 +65,7 @@ Accept wildcard characters: False
 ```
 
 ### -ProgressAction
-{{ Fill ProgressAction Description }}
+New common parameter introduced in PowerShell 7.4.
 
 ```yaml
 Type: ActionPreference
@@ -66,9 +85,13 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 ## INPUTS
 
 ### None
+This cmdlet does not accept any pipeline input.
+
 ## OUTPUTS
 
-### System.Object
+### RemoteForge.RemoteForgeRegistration
+This cmdlet outputs a `RemoteForgeRegistration` object for each registered forge. This object contains the `Name` property being the forge name and a `Description` of the forge.
+
 ## NOTES
 
 ## RELATED LINKS

@@ -8,7 +8,7 @@ schema: 2.0.0
 # Unregister-RemoteForge
 
 ## SYNOPSIS
-{{ Fill in the Synopsis }}
+Unregisters a remote forge.
 
 ## SYNTAX
 
@@ -17,21 +17,23 @@ Unregister-RemoteForge -Name <String[]> [-ProgressAction <ActionPreference>] [<C
 ```
 
 ## DESCRIPTION
-{{ Fill in the Description }}
+Unregisters a forge registration.
+Once unregistered the forge can only be added back with [Register-RemoteForge](./Register-RemoteForge.md).
 
 ## EXAMPLES
 
-### Example 1
+### Example 1: Unregisters a custom forge call MyForge
 ```powershell
-PS C:\> {{ Add example code here }}
+PS C:\> Unregister-RemoteForge -Name MyForge
 ```
 
-{{ Add example description here }}
+Unregisters the forge `MyForge.`
 
 ## PARAMETERS
 
 ### -Name
-{{ Fill Name Description }}
+The name of the forge to unregister.
+This value is case insensitive.
 
 ```yaml
 Type: String[]
@@ -46,7 +48,7 @@ Accept wildcard characters: False
 ```
 
 ### -ProgressAction
-{{ Fill ProgressAction Description }}
+New common parameter introduced in PowerShell 7.4.
 
 ```yaml
 Type: ActionPreference
@@ -66,9 +68,13 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 ## INPUTS
 
 ### None
+This cmdlet does not accept any pipeline input.
+
 ## OUTPUTS
 
-### System.Object
+### None
+This cmdlet does not output any object.
+
 ## NOTES
 
 ## RELATED LINKS

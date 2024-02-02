@@ -9,26 +9,31 @@ Locale: en-US
 # RemoteForge Module
 ## Description
 {{ Fill in the Description }}
+See about_RemoteForgeConnectionInfo for more information on how connections are defined by end users.
+See about_RemoteForgeTransports for more information on how to implement a custom forge transport.
 
 ## RemoteForge Cmdlets
+### [Enter-Remote](Enter-Remote.md)
+Starts an interactive session with a PSRemoting transport.
+
 ### [Get-RemoteForge](Get-RemoteForge.md)
-{{ Fill in the Synopsis }}
+Gets the registered forges.
 
 ### [Invoke-Remote](Invoke-Remote.md)
-{{ Fill in the Synopsis }}
+Runs commands on a PSRemoting transport.
 
 ### [New-RemoteForgeSession](New-RemoteForgeSession.md)
-{{ Fill in the Synopsis }}
+Creates a persistent connection to the PSRemoting transport target.
 
 ### [New-SSHForgeInfo](New-SSHForgeInfo.md)
-{{ Fill in the Synopsis }}
+Creates an SSH connection info object.
 
 ### [New-WSManForgeInfo](New-WSManForgeInfo.md)
-{{ Fill in the Synopsis }}
+Creates a WSMan connection info object.
 
 ### [Register-RemoteForge](Register-RemoteForge.md)
-{{ Fill in the Synopsis }}
+Registers a remote forge.
 
 ### [Unregister-RemoteForge](Unregister-RemoteForge.md)
-{{ Fill in the Synopsis }}
+Unregisters a remote forge.
 
