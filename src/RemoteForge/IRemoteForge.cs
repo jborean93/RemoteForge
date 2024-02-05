@@ -1,4 +1,6 @@
-using System.Diagnostics.CodeAnalysis;
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
 
 namespace RemoteForge;
 
@@ -21,23 +23,7 @@ public interface IRemoteForge
     /// It should describe the transport as it is displayed with the
     /// registration info.
     /// </summary>
-    [ExcludeFromCodeCoverage]
     protected internal static virtual string? ForgeDescription => null;
-
-    /// <summary>
-    /// Gets a string that describes the transport. It is used to identify the
-    /// transport when displaying an error.
-    /// </summary>
-    /// <returns>The transport string.</returns>
-    [ExcludeFromCodeCoverage]
-    string GetTransportString() => GetType().Name;
-
-    /// <summary>
-    /// Called to create the transport instance that does the actual remote
-    /// communication.
-    /// </summary>
-    /// <returns>The IRemoteForgeTransport implementation.</returns>
-    IRemoteForgeTransport CreateTransport();
 
     /// <summary>
     /// Called when creating the forge information instance with the URI
@@ -46,4 +32,17 @@ public interface IRemoteForge
     /// <param name="info">The string containing the connection info.</param>
     /// <returns>The IRemoteForge instance for the string provided.</returns>
     protected internal static abstract IRemoteForge Create(string info);
+
+    /// <summary>
+    /// Gets a string that describes the transport. It is used to identify the
+    /// transport when displaying an error.
+    /// </summary>
+    /// <returns>The transport string.</returns>
+    string GetTransportString() => GetType().Name;
+
+    /// <summary>
+    /// Creates the RemoteTransport object for the connection.
+    /// </summary>
+    /// <returns>The RemoteTransport object.</returns>
+    RemoteTransport CreateTransport();
 }

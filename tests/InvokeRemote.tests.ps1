@@ -18,6 +18,14 @@ Describe "Invoke-Remote tests" {
         $actual.PSShowComputerName | Should -BeTrue
     }
 
+    It "Invokes with extra options" {
+        $actual = Invoke-Remote -ConnectionInfo PipeTest:foo=bar -ScriptBlock {
+            $env:foo
+        }
+
+        $actual | Should -Be bar
+    }
+
     It "Invokes with default scheme" {
         $PSRemoteForgeDefault = 'PipeTest'
 
@@ -480,48 +488,57 @@ Describe "Invoke-Remote tests" {
     }
 
     It "Handles error when create failed" {
-        $actual = Invoke-Remote -ConnectionInfo PipeTest:?failoncreate=true -ScriptBlock { 'test' } -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual = Invoke-Remote -ConnectionInfo PipeTestWithOptions:?failoncreate=true -ScriptBlock { 'test' } -ErrorAction SilentlyContinue -ErrorVariable err
         $actual | Should -BeNullOrEmpty
 
         $err.Count | Should -Be 1
-        $err[0].TargetObject | Should -Be 'PipeTest:?failoncreate=true'
-        [string]$err[0] | Should -Be "Failed to run script on 'PipeTest:?failoncreate=true': Failed to create connection"
+        $err[0].TargetObject | Should -Be 'PipeTestWithOptions:?failoncreate=true'
+        [string]$err[0] | Should -Be "Failed to run script on 'PipeTestWithOptions:?failoncreate=true': Failed to create connection"
     }
 
     It "Handles error when close failed" {
-        $actual = Invoke-Remote -ConnectionInfo PipeTest:?failonclose=true -ScriptBlock { 'test' } -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual = Invoke-Remote -ConnectionInfo PipeTestWithOptions:?failonclose=true -ScriptBlock { 'test' } -ErrorAction SilentlyContinue -ErrorVariable err
         $actual | Should -Be test
 
         $err.Count | Should -Be 1
-        $err[0].TargetObject | Should -Be 'PipeTest:?failonclose=true'
-        [string]$err[0] | Should -Be "Failed to run script on 'PipeTest:?failonclose=true': Failed to close connection"
+        $err[0].TargetObject | Should -Be 'PipeTestWithOptions:?failonclose=true'
+        [string]$err[0] | Should -Be "Failed to run script on 'PipeTestWithOptions:?failonclose=true': Failed to close connection"
     }
 
     It "Handles error when read failed" {
-        $actual = Invoke-Remote -ConnectionInfo PipeTest:?failonread=true -ScriptBlock { 'test' } -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual = Invoke-Remote -ConnectionInfo PipeTestWithOptions:?failonread=true -ScriptBlock { 'test' } -ErrorAction SilentlyContinue -ErrorVariable err
         $actual | Should -BeNullOrEmpty
 
         $err.Count | Should -Be 1
-        $err[0].TargetObject | Should -Be 'PipeTest:?failonread=true'
-        [string]$err[0] | Should -Be "Failed to run script on 'PipeTest:?failonread=true': Failed to read message"
+        $err[0].TargetObject | Should -Be 'PipeTestWithOptions:?failonread=true'
+        [string]$err[0] | Should -Be "Failed to run script on 'PipeTestWithOptions:?failonread=true': Failed to read message"
     }
 
     It "Handles error when read end" {
-        $actual = Invoke-Remote -ConnectionInfo PipeTest:?endonread=true -ScriptBlock { 'test' } -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual = Invoke-Remote -ConnectionInfo PipeTestWithOptions:?endonread=true -ScriptBlock { 'test' } -ErrorAction SilentlyContinue -ErrorVariable err
         $actual | Should -BeNullOrEmpty
 
         $err.Count | Should -Be 1
-        $err[0].TargetObject | Should -Be 'PipeTest:?endonread=true'
-        [string]$err[0] | Should -Be "Failed to run script on 'PipeTest:?endonread=true': Transport has returned no data before it has been closed"
+        $err[0].TargetObject | Should -Be 'PipeTestWithOptions:?endonread=true'
+        [string]$err[0] | Should -Be "Failed to run script on 'PipeTestWithOptions:?endonread=true': Transport has returned no data before it has been closed"
     }
 
     It "Handles error when write failed" {
-        $actual = Invoke-Remote -ConnectionInfo PipeTest:?failonwrite=true -ScriptBlock { 'test' } -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual = Invoke-Remote -ConnectionInfo PipeTestWithOptions:?failonwrite=true -ScriptBlock { 'test' } -ErrorAction SilentlyContinue -ErrorVariable err
         $actual | Should -BeNullOrEmpty
 
         $err.Count | Should -Be 1
-        $err[0].TargetObject | Should -Be 'PipeTest:?failonwrite=true'
-        [string]$err[0] | Should -Be "Failed to run script on 'PipeTest:?failonwrite=true': Failed to write message"
+        $err[0].TargetObject | Should -Be 'PipeTestWithOptions:?failonwrite=true'
+        [string]$err[0] | Should -Be "Failed to run script on 'PipeTestWithOptions:?failonwrite=true': Failed to write message"
+    }
+
+    It "Handles error from process stderr" {
+        $actual = Invoke-Remote -ConnectionInfo PipeTestWithOptions:?writestderr=true -ScriptBlock { 'test' } -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual | Should -BeNullOrEmpty
+
+        $err.Count | Should -Be 1
+        $err[0].TargetObject | Should -Be 'PipeTestWithOptions:?writestderr=true'
+        [string]$err[0] | Should -BeLike "Failed to run script on 'PipeTestWithOptions:?writestderr=true': The argument 'FakeArg' is not recognized *"
     }
 }
 

@@ -16,9 +16,10 @@ Describe "Get-RemoteForge tests" {
     It "Gets forge with wildcard match" {
         $actual = Get-RemoteForge Fake*, PipeTe*
 
-        $actual.Count | Should -Be 1
-        $actual.Name | Should -Be PipeTest
-        $actual.Description | Should -Be 'Test pipe transport'
+        $actual.Count | Should -Be 2
+        $actual.Name | Should -Contain 'PipeTest'
+        $actual.Name | Should -Contain 'PipeTestWithOptions'
+        $actual.Description | Should -Contain 'Test pipe transport'
     }
 
     It "Gets no results with no match" {
@@ -68,9 +69,10 @@ Describe "Register-RemoteForge tests" {
     It "Registers by assembly with PassThru" {
         $actual = Register-RemoteForge -Assembly ([TestForge.PipeInfo].Assembly) -PassThru
 
-        $actual.Count | Should -Be 1
-        $actual.Name | Should -Be PipeTest
-        $actual.Description | Should -Be 'Test pipe transport'
+        $actual.Count | Should -Be 2
+        $actual.Name | Should -Contain 'PipeTest'
+        $actual.Name | Should -Contain 'PipeTestWithOptions'
+        $actual.Description | Should -Contain 'Test pipe transport'
     }
 
     It "Registers custom factory that returns RunspaceConnectionInfo" {
