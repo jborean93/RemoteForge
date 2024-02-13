@@ -3,13 +3,13 @@
 
 # SHORT DESCRIPTION
 Describes how to implement a custom remote forge transport that can be used by this module.
-See [TestForge](https://github.com/jborean93/RemoteForge/tree/main/tests/TestForge) for a basic implementation of an `IRemoteForge` and `IRemoteForgeTransport`.
+See [TestForge](https://github.com/jborean93/RemoteForge/tree/main/tests/TestForge) for a basic implementation of an `IRemoteForge` and the `RemoteTransport` it uses.
 
 # LONG DESCRIPTION
 Implementing a custom forge transport requires three things
 
 + An implementation of [IRemoteForge](https://github.com/jborean93/RemoteForge/blob/main/src/RemoteForge/IRemoteForge.cs)
-+ An implementation of [IRemoteForgeTransport](https://github.com/jborean93/RemoteForge/blob/main/src/RemoteForge/IRemoteForgeTransport.cs)
++ An implementation of [RemoteTransport](https://github.com/jborean93/RemoteForge/blob/main/src/RemoteForge/RemoteTransport.cs)
 + Registration of the forge
 
 The [IRemoteForge](https://github.com/jborean93/RemoteForge/blob/main/src/RemoteForge/IRemoteForge.cs) type is a simple implementation that provides the structure needed to generate the forge transport.
@@ -35,10 +35,10 @@ public sealed class MyForgeInfo : IRemoteForge
         return MyForgeInfo(...);
     }
 
-    public IRemoteForgeTransport CreateTransport()
+    public RemoteTransport CreateTransport()
     {
         // Called when a new session is being opened, it should return
-        // the IRemoteForgeTransport instance defined later on.
+        // the RemoteTransport instance defined later on.
         return new MyForgeTransport(...);
     }
 }
@@ -46,10 +46,10 @@ public sealed class MyForgeInfo : IRemoteForge
 
 In this example `Invoke-Remote MyForge:foo` will call the `Create` method with the value `foo`.
 It is up to this implementation to parse the string provided and construct the `MyForgeInfo` object containing the connection details.
-When the session is being created, the `CreateTransport()` method will be called that provides the `IRemoteForgeTransport` object used by the actual connection.
+When the session is being created, the `CreateTransport()` method will be called that provides the `RemoteTransport` object used by the actual connection.
 This method should use any class properties stored on the object that defines the transport itself.
 
-The [IRemoteForgeTransport](https://github.com/jborean93/RemoteForge/blob/main/src/RemoteForge/IRemoteForgeTransport.cs) implementation must define the following four methods:
+The [RemoteTransport](https://github.com/jborean93/RemoteForge/blob/main/src/RemoteForge/RemoteTransport.cs) implementation must define the following five methods:
 
 ```csharp
 using RemoteForge;
@@ -58,35 +58,44 @@ using System.Threading.Tasks;
 
 namespace MyForge;
 
-public sealed class MyForgeTransport : IRemoteForgeTransport
+public sealed class MyForgeTransport : RemoteTransport
 {
-    public async Task CreateConnection(CancellationToken cancelToken)
+    protected override async Task Open(CancellationToken cancellationToken)
     {
-        // Creates the connection to the target
+        // Opens the connection, can be omitted to have no special
+        // connection setup step.
     }
 
-    public async Task CloseConnection(CancellationToken cancelToken)
+    protected override async Task Close(CancellationToken cancellationToken)
     {
-        // Closes the connection to the target
+        // Closes the connection, can be omitted to have no special
+        // connection teardown step.
     }
 
-    public async Task WriteMessage(string message, CancellationToken cancelToken)
+    protected override async Task WriteInput(string line, CancellationToken cancellationToken)
     {
-        // Writes the PSRemoting message to the target
+        // Writes the PSRemoting payload. This must be defined.
     }
 
-    public async Task<string?> WaitMessage(CancellationToken cancelToken)
+    protected override async Task<string?> ReadOutput(CancellationToken cancellationToken)
     {
-        // Wait until a PSRemoting message has been received from the target
-        // and returns the message. This is called repeatedly until it returns
-        // "", null, or the connection is closed.
+        // Reads the PSRemoting payload response. This must be defined.
+    }
+
+    protected override async Task<string?> ReadError(CancellationToken cancellationToken)
+    {
+        // Optional method to read an error message, for example stderr
+        // from a process.
     }
 }
 ```
 
+The [ProcessTransport](https://github.com/jborean93/RemoteForge/blob/main/src/RemoteForge/ProcessTransport.cs) class is a pre-defined class that is used to wrap a new process executable.
+This is a great class for a transport to re-use if it is just starting an executable and exchanging the PSRemoting payloads through the stdin and stdout.
+
 Any exceptions raised on the above methods will mark the transport as broken and the connection will be closed as best as it can.
 
-The class can also optionally implement `IDisposable` and the remote forge transport mechanism will call `Dispose()` once it is finished with the transport.
+The class can also optionally define a `void Dispose(bool isDisposing)` method that is called when the transport is no longer needed.
 
 The implementation has been designed around the async Task model in C# as it is quite effective with blocking IO operations that remote transports typically use.
 The cancellation token provided to each method will be set when the transport gets into a bad state and the caller needs to close the transport.

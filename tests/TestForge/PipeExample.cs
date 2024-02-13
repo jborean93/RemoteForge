@@ -1,8 +1,6 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.Specialized;
-using System.Diagnostics;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Web;
 using RemoteForge;
 
@@ -10,10 +8,53 @@ namespace TestForge;
 
 public sealed class PipeInfo : IRemoteForge
 {
-    private readonly string _factoryUri;
-
     public static string ForgeName => "PipeTest";
     public static string ForgeDescription => "Test pipe transport";
+
+    private readonly Dictionary<string, string>? _environment;
+
+    private PipeInfo(Dictionary<string, string>? environment)
+    {
+        _environment = environment;
+    }
+
+    public string GetTransportString() => "PipeTest:";
+
+    public static IRemoteForge Create(string info)
+    {
+        if (string.IsNullOrWhiteSpace(info))
+        {
+            return new PipeInfo(null);
+        }
+        else
+        {
+            Dictionary<string, string> envVars = new();
+            foreach (string entry in info.Split(','))
+            {
+                string[] kvp = entry.Split('=', 2);
+                envVars.Add(kvp[0], kvp[1]);
+            }
+
+            return new PipeInfo(envVars);
+        }
+    }
+
+    public RemoteTransport CreateTransport()
+    {
+        if (_environment == null)
+        {
+            return new PwshTransport();
+        }
+        else
+        {
+            return new PwshTransport(_environment);
+        }
+    }
+}
+
+public sealed class PipeInfoWithOptions : IRemoteForge
+{
+    public static string ForgeName => "PipeTestWithOptions";
 
     public bool FailOnClose { get; }
     public bool FailOnCreate { get; }
@@ -21,16 +62,17 @@ public sealed class PipeInfo : IRemoteForge
     public bool EndOnRead { get; }
     public bool FailOnWrite { get; }
     public bool LogMessages { get; }
+    public bool WriteStderr { get; }
     public bool Hang { get; }
 
-    private PipeInfo(
-        string factoryUri,
+    private PipeInfoWithOptions(
         bool failOnClose,
         bool failOnCreate,
         bool failOnRead,
         bool endOnRead,
         bool failOnWrite,
         bool logMessages,
+        bool writeStderr,
         bool hang
     )
     {
@@ -40,26 +82,14 @@ public sealed class PipeInfo : IRemoteForge
         EndOnRead = endOnRead;
         FailOnWrite = failOnWrite;
         LogMessages = logMessages;
+        WriteStderr = writeStderr;
         Hang = hang;
-        _factoryUri = factoryUri;
     }
-
-    public IRemoteForgeTransport CreateTransport()
-        => new PipeTransport(
-            FailOnClose,
-            FailOnCreate,
-            FailOnRead,
-            EndOnRead,
-            FailOnWrite,
-            LogMessages,
-            Hang);
-
-    public string GetTransportString() => _factoryUri;
 
     public static IRemoteForge Create(string info)
     {
-        bool failOnClose, failOnCreate, failOnRead, endOnRead, failOnWrite, logMessages, hang;
-        failOnClose = failOnCreate = failOnRead = endOnRead = failOnWrite = logMessages = hang = false;
+        bool failOnClose, failOnCreate, failOnRead, endOnRead, failOnWrite, logMessages, writeStderr, hang;
+        failOnClose = failOnCreate = failOnRead = endOnRead = failOnWrite = logMessages = writeStderr = hang = false;
 
         Uri pipeUri = new($"PipeTest://{info}");
         NameValueCollection infoQueries = HttpUtility.ParseQueryString(pipeUri.Query);
@@ -93,139 +123,43 @@ public sealed class PipeInfo : IRemoteForge
             {
                 failOnWrite = result;
             }
+            else if (key == "writestderr" && bool.TryParse(value, out result))
+            {
+                writeStderr = result;
+            }
             else if (key == "hang" && bool.TryParse(value, out result))
             {
                 hang = result;
             }
         }
 
-        return new PipeInfo(
-            $"PipeTest:{info}",
+        return new PipeInfoWithOptions(
             failOnClose,
             failOnCreate,
             failOnRead,
             endOnRead,
             failOnWrite,
             logMessages,
+            writeStderr,
             hang);
     }
-}
 
-public sealed class PipeTransport : IRemoteForgeTransport, IDisposable
-{
-    private Process? _proc;
-    private readonly bool _failOnClose;
-    private readonly bool _failOnCreate;
-    private readonly bool _failOnRead;
-    private readonly bool _endOnRead;
-    private readonly bool _failOnWrite;
-    private readonly bool _logMessages;
-    private readonly bool _hang;
-
-
-    internal PipeTransport(
-        bool failOnClose,
-        bool failOnCreate,
-        bool failOnRead,
-        bool endOfRead,
-        bool failOnWrite,
-        bool logMessages,
-        bool hang)
+    public RemoteTransport CreateTransport()
     {
-        _failOnClose = failOnClose;
-        _failOnCreate = failOnCreate;
-        _failOnRead = failOnRead;
-        _endOnRead = endOfRead;
-        _failOnWrite = failOnWrite;
-        _logMessages = logMessages;
-        _hang = hang;
-    }
-
-    public Task CreateConnection(CancellationToken cancellationToken)
-    {
-        if (_failOnCreate)
+        if (WriteStderr)
         {
-            throw new Exception("Failed to create connection");
+            return new PwshTransport("pwsh", new[] { "FakeArg" });
         }
-
-        _proc = new()
+        else
         {
-            StartInfo = new()
-            {
-                FileName = "pwsh",
-                Arguments = "-NoLogo -ServerMode",
-                RedirectStandardError = true,
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                WindowStyle = ProcessWindowStyle.Hidden,
-                CreateNoWindow = true,
-            }
-        };
-        _proc.Start();
-
-        return Task.CompletedTask;
-    }
-
-    public async Task CloseConnection(CancellationToken cancellationToken)
-    {
-        if (_proc != null)
-        {
-            _proc.Kill();
-            await _proc.WaitForExitAsync(cancellationToken);
+            return new PwshTransport(
+            FailOnClose,
+            FailOnCreate,
+            FailOnRead,
+            EndOnRead,
+            FailOnWrite,
+            LogMessages,
+            Hang);
         }
-
-        if (_failOnClose)
-        {
-            throw new Exception("Failed to close connection");
-        }
-    }
-
-    public async Task WriteMessage(string message, CancellationToken cancellationToken)
-    {
-        Debug.Assert(_proc != null);
-        if (_logMessages)
-        {
-            Console.WriteLine($"Writing: {message}");
-        }
-
-        if (_failOnWrite)
-        {
-            throw new Exception("Failed to write message");
-        }
-
-        await _proc.StandardInput.WriteLineAsync(message.AsMemory(), cancellationToken);
-    }
-
-    public async Task<string?> WaitMessage(CancellationToken cancellationToken)
-    {
-        Debug.Assert(_proc != null);
-
-        if (_failOnRead)
-        {
-            throw new Exception("Failed to read message");
-        }
-        else if (_endOnRead)
-        {
-            return null;
-        }
-        else if (_hang)
-        {
-            await Task.Delay(-1, cancellationToken);
-        }
-
-        string? msg = await _proc.StandardOutput.ReadLineAsync(cancellationToken);
-        if (_logMessages)
-        {
-            Console.WriteLine($"Receiving: {msg}");
-        }
-
-        return msg;
-    }
-
-    public void Dispose()
-    {
-        _proc?.Dispose();
-        _proc = null;
     }
 }

@@ -44,22 +44,21 @@ Write-Host "Installing PowerShell dependencies" -ForegroundColor Cyan
 $deps = $Task -eq 'Build' ? $Manifest.BuildRequirements : $Manifest.TestRequirements
 $deps | Install-BuildDependencies
 
-if ($Task -eq 'Test' -or $true) {
-    # This is a special step to setup test dependencies
-    Write-Host "Compiling test Forge module" -ForegroundColor Cyan
 
-    $projectRoot = [Path]::Combine($PSScriptRoot, 'tests', 'TestForge')
-    $buildArgs = @(
-        'publish'
-        '--framework', 'net7.0'
-        '--configuration', 'Release'
-        "-p:Version=$($Manifest.Module.Version)"
-        [Path]::Combine($projectRoot, 'TestForge.csproj')
-    )
-    dotnet @buildArgs
-    if ($LASTEXITCODE) {
-        throw "Failed to compile TestForge for testing"
-    }
+# This is a special step to setup test dependencies
+Write-Host "Compiling test Forge module" -ForegroundColor Cyan
+
+$projectRoot = [Path]::Combine($PSScriptRoot, 'tests', 'TestForge')
+$buildArgs = @(
+    'publish'
+    '--framework', 'net7.0'
+    '--configuration', 'Release'
+    "-p:Version=$($Manifest.Module.Version)"
+    [Path]::Combine($projectRoot, 'TestForge.csproj')
+)
+dotnet @buildArgs
+if ($LASTEXITCODE) {
+    throw "Failed to compile TestForge for testing"
 }
 
 $buildScript = [Path]::Combine($PSScriptRoot, "tools", "InvokeBuild.ps1")

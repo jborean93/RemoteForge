@@ -58,7 +58,7 @@ Describe "New-RemoteForgeSession tests" {
                 Import-Module -Name $RemoteForge
                 Import-Module -Name $TestForge
 
-                New-RemoteForgeSession PipeTest:?hang=true
+                New-RemoteForgeSession PipeTestWithOptions:?hang=true
             }).AddParameters(@{
                 RemoteForge = (Get-Module -Name RemoteForge).Path
                 TestForge = (Get-Module -Name TestForge).Path
@@ -77,38 +77,38 @@ Describe "New-RemoteForgeSession tests" {
     }
 
     It "Handles error when create failed" {
-        $actual = New-RemoteForgeSession PipeTest:?failoncreate=true -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual = New-RemoteForgeSession PipeTestWithOptions:?failoncreate=true -ErrorAction SilentlyContinue -ErrorVariable err
         $actual | Should -BeNullOrEmpty
 
         $err.Count | Should -Be 1
-        $err[0].TargetObject | Should -Be 'PipeTest:?failoncreate=true'
-        [string]$err[0] | Should -Be "Failed to open runspace for 'PipeTest:?failoncreate=true': Failed to create connection"
+        $err[0].TargetObject | Should -Be 'PipeTestWithOptions:?failoncreate=true'
+        [string]$err[0] | Should -Be "Failed to open runspace for 'PipeTestWithOptions:?failoncreate=true': Failed to create connection"
     }
 
     It "Handles error when read failed" {
-        $actual = New-RemoteForgeSession PipeTest:?failonread=true -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual = New-RemoteForgeSession PipeTestWithOptions:?failonread=true -ErrorAction SilentlyContinue -ErrorVariable err
         $actual | Should -BeNullOrEmpty
 
         $err.Count | Should -Be 1
-        $err[0].TargetObject | Should -Be 'PipeTest:?failonread=true'
-        [string]$err[0] | Should -Be "Failed to open runspace for 'PipeTest:?failonread=true': Failed to read message"
+        $err[0].TargetObject | Should -Be 'PipeTestWithOptions:?failonread=true'
+        [string]$err[0] | Should -Be "Failed to open runspace for 'PipeTestWithOptions:?failonread=true': Failed to read message"
     }
 
     It "Handles error when read end" {
-        $actual = New-RemoteForgeSession PipeTest:?EndOnRead=true -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual = New-RemoteForgeSession PipeTestWithOptions:?EndOnRead=true -ErrorAction SilentlyContinue -ErrorVariable err
         $actual | Should -BeNullOrEmpty
 
         $err.Count | Should -Be 1
-        $err[0].TargetObject | Should -Be 'PipeTest:?EndOnRead=true'
-        [string]$err[0] | Should -Be "Failed to open runspace for 'PipeTest:?EndOnRead=true': Transport has returned no data before it has been closed"
+        $err[0].TargetObject | Should -Be 'PipeTestWithOptions:?EndOnRead=true'
+        [string]$err[0] | Should -Be "Failed to open runspace for 'PipeTestWithOptions:?EndOnRead=true': Transport has returned no data before it has been closed"
     }
 
     It "Handles error when write failed" {
-        $actual = New-RemoteForgeSession pipetest:?failonwrite=true -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual = New-RemoteForgeSession pipetestwithoptions:?failonwrite=true -ErrorAction SilentlyContinue -ErrorVariable err
         $actual | Should -BeNullOrEmpty
 
         $err.Count | Should -Be 1
-        $err[0].TargetObject | Should -Be 'pipetest:?failonwrite=true'
-        [string]$err[0] | Should -Be "Failed to open runspace for 'pipetest:?failonwrite=true': Failed to write message"
+        $err[0].TargetObject | Should -Be 'pipetestwithoptions:?failonwrite=true'
+        [string]$err[0] | Should -Be "Failed to open runspace for 'pipetestwithoptions:?failonwrite=true': Failed to write message"
     }
 }
