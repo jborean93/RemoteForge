@@ -109,5 +109,6 @@ jobs:
       if: always()
       uses: codecov/codecov-action@v4
       with:
+        token: ${{ secrets.CODECOV_TOKEN }}
         files: ./output/TestResults/Coverage.xml
         flags: ${{ matrix.info.name }}

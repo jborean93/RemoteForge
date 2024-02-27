@@ -14,6 +14,7 @@ class Manifest {
     [ValidateSet("Debug", "Release")]
     [string]$Configuration
 
+    [string]$RepositoryPath
     [string]$DocsPath
     [string]$DotnetPath
     [string]$OutputPath
@@ -36,8 +37,9 @@ class Manifest {
         [Architecture]$PowerShellArch,
         [string]$ManifestPath
     ) {
+        $this.RepositoryPath = [Path]::GetFullPath([Path]::Combine($PSScriptRoot, ".."))
         $moduleManifestParams = @{
-            Path = [Path]::Combine($PSScriptRoot, "..", "module", "*.psd1")
+            Path = [Path]::Combine($this.RepositoryPath, "module", "*.psd1")
             # Can emit errors about invalid RootModule which don't matter here
             ErrorAction = 'Ignore'
             WarningAction = 'Ignore'
@@ -49,20 +51,13 @@ class Manifest {
         $raw = Import-PowerShellDataFile -LiteralPath $ManifestPath
         $this.DotnetProject = $raw.DotnetProject ?? $this.Module.Name
 
-        $this.DocsPath = [Path]::GetFullPath(
-            [Path]::Combine($PSScriptRoot, "..", "docs"))
-        $this.DotnetPath = [Path]::GetFullPath(
-            [Path]::Combine($PSScriptRoot, "..", "src", $this.DotnetProject))
-        $this.OutputPath = [Path]::GetFullPath(
-            [Path]::Combine($PSScriptRoot, "..", "output"))
-        $this.PowerShellPath = [Path]::GetFullPath(
-            [Path]::Combine($PSScriptRoot, "..", "module"))
-        $this.ReleasePath = [Path]::GetFullPath(
-            [Path]::Combine($this.OutputPath, $this.Module.Name, $this.Module.Version))
-        $this.TestPath = [Path]::GetFullPath(
-            [Path]::Combine($PSScriptRoot, "..", "tests"))
-        $this.TestResultsPath = [Path]::GetFullPath(
-            [Path]::Combine($this.OutputPath, "TestResults"))
+        $this.DocsPath = [Path]::Combine($this.RepositoryPath, "docs")
+        $this.DotnetPath = [Path]::Combine($this.RepositoryPath, "src", $this.DotnetProject)
+        $this.OutputPath = [Path]::Combine($this.RepositoryPath, "output")
+        $this.PowerShellPath = [Path]::Combine($this.RepositoryPath, "module")
+        $this.ReleasePath = [Path]::Combine($this.OutputPath, $this.Module.Name, $this.Module.Version)
+        $this.TestPath = [Path]::Combine($this.RepositoryPath, "tests")
+        $this.TestResultsPath = [Path]::Combine($this.OutputPath, "TestResults")
 
         if (-not (Test-Path -LiteralPath $this.ReleasePath)) {
             New-Item -Path $this.ReleasePath -ItemType Directory -Force | Out-Null
