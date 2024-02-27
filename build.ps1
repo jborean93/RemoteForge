@@ -44,7 +44,6 @@ Write-Host "Installing PowerShell dependencies" -ForegroundColor Cyan
 $deps = $Task -eq 'Build' ? $Manifest.BuildRequirements : $Manifest.TestRequirements
 $deps | Install-BuildDependencies
 
-
 # This is a special step to setup test dependencies
 Write-Host "Compiling test Forge module" -ForegroundColor Cyan
 
