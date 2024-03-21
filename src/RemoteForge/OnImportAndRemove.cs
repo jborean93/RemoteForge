@@ -20,7 +20,7 @@ public class OnModuleImportAndRemove : IModuleAssemblyInitializer, IModuleAssemb
 
     public void OnRemove(PSModuleInfo module)
     {
-        RemoteForgeRegistration.Registrations.Clear();
+        RegistrationStorage.GetFromTLS().Registrations.Clear();
     }
 
     private static SSHConnectionInfo CreateSshConnectionInfo(string info)
