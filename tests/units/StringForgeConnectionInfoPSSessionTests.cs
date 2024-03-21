@@ -37,6 +37,8 @@ public class StringForgeConnectionInfoPSSessionTests : IDisposable
 
     public StringForgeConnectionInfoPSSessionTests() : base()
     {
+        Runspace.DefaultRunspace = RunspaceFactory.CreateRunspace(InitialSessionState.CreateDefault2());
+        Runspace.DefaultRunspace.Open();
         _remoteForgeModule.OnImport();
     }
 
@@ -115,5 +117,6 @@ public class StringForgeConnectionInfoPSSessionTests : IDisposable
     public void Dispose()
     {
         _remoteForgeModule.OnRemove(null!);
+        Runspace.DefaultRunspace?.Dispose();
     }
 }

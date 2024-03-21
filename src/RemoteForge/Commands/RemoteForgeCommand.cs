@@ -31,7 +31,7 @@ public sealed class GetRemoteForgeCommand : PSCmdlet
 
     protected override void EndProcessing()
     {
-        foreach (RemoteForgeRegistration forge in RemoteForgeRegistration.Registrations.ToArray())
+        foreach (RemoteForgeRegistration forge in RegistrationStorage.GetFromTLS().Registrations.ToArray())
         {
             WriteVerbose($"Checking for forge '{forge.Name}' matches requested Name");
 

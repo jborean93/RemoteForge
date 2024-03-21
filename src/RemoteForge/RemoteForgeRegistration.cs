@@ -4,20 +4,50 @@ using System.Diagnostics.CodeAnalysis;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace RemoteForge;
 
 public delegate RunspaceConnectionInfo RemoteForgeFactory(string info);
 
+internal class RunspaceSpecificStorage<T>
+{
+    private readonly ConditionalWeakTable<Runspace, Lazy<T>> _map = new();
+
+    private readonly Func<T> _factory;
+
+    private readonly LazyThreadSafetyMode _mode = LazyThreadSafetyMode.ExecutionAndPublication;
+
+    public RunspaceSpecificStorage(Func<T> factory)
+    {
+        _factory = factory;
+    }
+
+    public T GetFromTLS()
+        => GetForRunspace(Runspace.DefaultRunspace);
+
+    public T GetForRunspace(Runspace runspace)
+    {
+        return _map.GetValue(
+            runspace,
+            _ => new Lazy<T>(() => _factory(), _mode))
+            .Value;
+    }
+}
+
+internal sealed class RegistrationStorage
+{
+    private static RunspaceSpecificStorage<RegistrationStorage> _registrations = new(() => new());
+
+    public List<RemoteForgeRegistration> Registrations = new();
+
+    public static RegistrationStorage GetFromTLS() => _registrations.GetFromTLS();
+}
+
+
 public sealed class RemoteForgeRegistration
 {
-    // We use a thread local storage value so the registrations are scoped to
-    // a Runspace rather than be process wide.
-    [ThreadStatic]
-    private static List<RemoteForgeRegistration>? _registrations;
-
-    internal static List<RemoteForgeRegistration> Registrations => _registrations ??= new();
-
     public string Name { get; }
     public string? Description { get; }
     internal RemoteForgeFactory CreateFactory { get; }
@@ -85,7 +115,7 @@ public sealed class RemoteForgeRegistration
             }
             else if (force)
             {
-                Registrations.Remove(forge);
+                RegistrationStorage.GetFromTLS().Registrations.Remove(forge);
             }
             else
             {
@@ -94,7 +124,7 @@ public sealed class RemoteForgeRegistration
         }
 
         RemoteForgeRegistration registration = new(name, description, factory);
-        Registrations.Add(registration);
+        RegistrationStorage.GetFromTLS().Registrations.Add(registration);
 
         return registration;
     }
@@ -103,7 +133,7 @@ public sealed class RemoteForgeRegistration
     {
         if (TryGetForgeRegistration(name, out RemoteForgeRegistration? forge))
         {
-            Registrations.Remove(forge);
+            RegistrationStorage.GetFromTLS().Registrations.Remove(forge);
         }
         else
         {
@@ -151,7 +181,7 @@ public sealed class RemoteForgeRegistration
         [NotNullWhen(true)] out RemoteForgeRegistration? registration)
     {
         string lowerId = name.ToLowerInvariant();
-        foreach (RemoteForgeRegistration forge in Registrations)
+        foreach (RemoteForgeRegistration forge in RegistrationStorage.GetFromTLS().Registrations)
         {
             if (forge.Name.ToLowerInvariant() == lowerId)
             {
