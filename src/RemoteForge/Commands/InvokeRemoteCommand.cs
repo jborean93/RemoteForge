@@ -194,8 +194,6 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
 
     private Hashtable GetUsingParameters(string script)
     {
-        ScriptBlock? indexAccesor = null;
-
         Hashtable usingParams = new();
 
         // ParseInput will not fail on errors, to allow providing anything as
@@ -233,30 +231,14 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
                     ThrowTerminatingError(err);
                 }
 
-                if (usingAst.SubExpression is IndexExpressionAst usingIndex)
+                try
                 {
-                    // ConstantExpressionAst, StringConstantExpressionAst, and
-                    // VariableExpressionAst with IsConstantVariable() all
-                    // should return a value here. Those 3 scenarios are the
-                    // only index scenarios that $using supports.
-                    // SafeGetValue() fails in other scenarios which we warn
-                    // about.
-                    object index;
-                    try
-                    {
-                        index = usingIndex.Index.SafeGetValue();
-                    }
-                    catch (InvalidOperationException e)
-                    {
-                        WriteWarning($"Failed to extract $using value: {e.Message}");
-                        continue;
-                    }
-
-                    // PowerShell doesn't have a nice API to dynamically
-                    // invoke the Item[] lookup so to avoid complex reflection
-                    // code we just fallback to doing it in pwsh itself.
-                    indexAccesor ??= System.Management.Automation.ScriptBlock.Create("$args[0][$args[1]]");
-                    value = indexAccesor.Invoke(value, index).FirstOrDefault();
+                    value = ExtractUsingExpressionValue(value, usingAst.SubExpression);
+                }
+                catch (Exception e)
+                {
+                    WriteWarning($"Failed to extract $using value: {e.Message}");
+                    continue;
                 }
 
                 usingParams.Add(key, value);
@@ -264,6 +246,72 @@ public sealed class InvokeRemoteCommand : PSCmdlet, IDisposable
         }
 
         return usingParams;
+    }
+
+    private object? ExtractUsingExpressionValue(object? value, ExpressionAst ast)
+    {
+        if (ast is not MemberExpressionAst && ast is not IndexExpressionAst)
+        {
+            // No need to extract the inner value for simple $using:var entries.
+            return value;
+        }
+
+        // We need to replace the inner VariableExpressionAst that the
+        // member/index expressions are pulling from with the constant value.
+        VariableExpressionAst usingVariable = (VariableExpressionAst)ast.Find(a => a is VariableExpressionAst, false);
+
+        // We go up the hierarchy replacing the index and member expressions
+        // with the new constant value/the newly wrapped AST expressions.
+        ExpressionAst lookupAst = new ConstantExpressionAst(ast.Extent, value);
+        ExpressionAst currentAst = usingVariable;
+        while (true)
+        {
+            if (currentAst.Parent is IndexExpressionAst indexAst)
+            {
+                lookupAst = new IndexExpressionAst(
+                    indexAst.Extent,
+                    lookupAst,
+                    (ExpressionAst)indexAst.Index.Copy(),
+                    indexAst.NullConditional);
+                currentAst = indexAst;
+            }
+            else if (currentAst.Parent is MemberExpressionAst memberAst)
+            {
+                lookupAst = new MemberExpressionAst(
+                    memberAst.Extent,
+                    lookupAst,
+                    (ExpressionAst)memberAst.Member.Copy(),
+                    memberAst.Static,
+                    memberAst.NullConditional);
+                currentAst = memberAst;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        // With the new ScriptBlock we can just run it to get the final value.
+        ScriptBlock extractionScriptBlock = new ScriptBlockAst(
+            ast.Extent,
+            null,
+            new StatementBlockAst(
+                ast.Extent,
+                new StatementAst[]
+                {
+                    new PipelineAst(
+                        ast.Extent,
+                        new CommandBaseAst[]
+                        {
+                            new CommandExpressionAst(
+                                ast.Extent,
+                                lookupAst,
+                                null)
+                        })
+                },
+                null),
+            false).GetScriptBlock();
+        return extractionScriptBlock.Invoke().FirstOrDefault();
     }
 
     protected override void ProcessRecord()

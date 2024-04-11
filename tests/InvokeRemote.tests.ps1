@@ -646,6 +646,23 @@ Describe 'Invoke-Remote $using: tests' {
         $actual | Should -BeNullOrEmpty
     }
 
+    It "Passes with index and member lookup" {
+        $var = @{
+            'Prop With Space' = @(
+                @{ Foo = 'value 1' }
+                @{ Foo = 'value 2' }
+            )
+        }
+        $actual = Invoke-Remote -ConnectionInfo PipeTest: -ScriptBlock {
+            $using:var.'Prop With Space'[0]['Foo']
+            $using:var["Prop With Space"][1].Foo
+        }
+
+        $actual.Count | Should -Be 2
+        $actual[0] | Should -Be 'value 1'
+        $actual[1] | Should -Be 'value 2'
+    }
+
     It "Fails if variable not defined locally" {
         {
             Invoke-Remote -ConnectionInfo PipeTest: -ScriptBlock { $using:UndefinedVar }
@@ -666,6 +683,6 @@ Describe 'Invoke-Remote $using: tests' {
         Invoke-Remote -ConnectionInfo PipeTest: -ScriptBlock '$idx = 0; $using:var[$idx]' -WarningAction SilentlyContinue -WarningVariable warn -ErrorAction Ignore
 
         $warn.Count | Should -Be 1
-        $warn[0].Message | Should -Be 'Failed to extract $using value: Cannot generate a PowerShell object for a ScriptBlock evaluating dynamic expressions. Dynamic expression: $idx.'
+        $warn[0].Message | Should -Be 'Failed to extract $using value: Index operation failed; the array index evaluated to null.'
     }
 }
